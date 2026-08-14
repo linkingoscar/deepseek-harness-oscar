@@ -16,15 +16,30 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BenchMetricsTests(unittest.TestCase):
-    def test_event_metrics_sum_usage_and_code_mode_trajectory(self) -> None:
+    def test_event_metrics_sum_usage_code_mode_and_prompt_envelope(self) -> None:
+        tools_before = [{
+            "name": "read",
+            "description": "Read a file",
+            "parameters": {"type": "object"},
+        }]
+        tools_after = [
+            *tools_before,
+            {
+                "name": "write",
+                "description": "Write a file",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
+            },
+        ]
         events = [
             {"type": "turn/end", "data": {}},
             {"type": "step/end", "data": {}},
+            {"type": "request/header", "data": {"header": {"system": "abc", "tools": tools_before}}},
             {"type": "tool/call", "data": {"name": "run_code"}},
             {"type": "tool/result", "data": {}},
             {"type": "tool/code-dispatch-start", "data": {"name": "bash"}},
             {"type": "tool/code-dispatch", "data": {"name": "bash", "isError": False}},
             {"type": "tool/code-dispatch", "data": {"name": "str_replace_editor", "isError": True}},
+            {"type": "request/header", "data": {"header": {"system": "abcdef", "tools": tools_after}}},
             {
                 "type": "assistant/message",
                 "data": {
@@ -40,6 +55,10 @@ class BenchMetricsTests(unittest.TestCase):
         ]
 
         metrics = MODULE.event_metrics(events)
+        tools_before_chars = MODULE.compact_json_chars(tools_before)[1]
+        tools_after_chars = MODULE.compact_json_chars(tools_after)[1]
+        first_envelope = 3 + tools_before_chars
+        last_envelope = 6 + tools_after_chars
 
         self.assertEqual(metrics["turns"], 1)
         self.assertEqual(metrics["steps"], 1)
@@ -53,6 +72,25 @@ class BenchMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["output_tokens"], 3)
         self.assertEqual(metrics["reasoning_tokens"], 4)
         self.assertEqual(metrics["billed_input_tokens"], 17)
+        self.assertEqual(metrics["request_headers"], 2)
+        self.assertEqual(metrics["prompt_envelope_changes"], 1)
+        self.assertEqual(metrics["max_system_chars"], 6)
+        self.assertEqual(metrics["max_tool_schema_json_chars"], tools_after_chars)
+        self.assertEqual(metrics["max_prompt_envelope_chars"], last_envelope)
+        self.assertEqual(metrics["max_tool_count"], 2)
+        self.assertEqual(metrics["prompt_envelope_growth_chars"], last_envelope - first_envelope)
+        self.assertEqual(metrics["max_prompt_envelope_step_growth_chars"], last_envelope - first_envelope)
+
+    def test_repeated_request_header_does_not_count_as_change(self) -> None:
+        header = {"system": "same", "tools": []}
+        metrics = MODULE.event_metrics([
+            {"type": "request/header", "data": {"header": header}},
+            {"type": "request/header", "data": {"header": header}},
+        ])
+        self.assertEqual(metrics["request_headers"], 2)
+        self.assertEqual(metrics["prompt_envelope_changes"], 0)
+        self.assertEqual(metrics["prompt_envelope_growth_chars"], 0)
+        self.assertEqual(metrics["max_prompt_envelope_step_growth_chars"], 0)
 
     def test_native_leaf_calls_equal_model_tool_calls(self) -> None:
         metrics = MODULE.event_metrics([
@@ -79,6 +117,14 @@ class BenchMetricsTests(unittest.TestCase):
                 "code_subcalls": 0,
                 "billed_input_tokens": 100,
                 "output_tokens": 20,
+                "request_headers": 2,
+                "prompt_envelope_changes": 1,
+                "max_system_chars": 900,
+                "max_tool_schema_json_chars": 1100,
+                "max_prompt_envelope_chars": 2000,
+                "max_tool_count": 5,
+                "prompt_envelope_growth_chars": 100,
+                "max_prompt_envelope_step_growth_chars": 100,
             },
             {"task_id": "baseline-only", "repetition": 1, "scored": True, "success": True},
         ]
@@ -96,6 +142,14 @@ class BenchMetricsTests(unittest.TestCase):
                 "code_subcalls": 3,
                 "billed_input_tokens": 120,
                 "output_tokens": 25,
+                "request_headers": 2,
+                "prompt_envelope_changes": 0,
+                "max_system_chars": 1000,
+                "max_tool_schema_json_chars": 400,
+                "max_prompt_envelope_chars": 1400,
+                "max_tool_count": 1,
+                "prompt_envelope_growth_chars": 0,
+                "max_prompt_envelope_step_growth_chars": 0,
             },
             {"task_id": "candidate-only", "repetition": 1, "scored": True, "success": True},
         ]
@@ -109,6 +163,18 @@ class BenchMetricsTests(unittest.TestCase):
         self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_tool_calls"], -1.0)
         self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_leaf_tool_calls"], 1.0)
         self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_code_subcalls"], 3.0)
+        self.assertEqual(
+            comparison["delta_candidate_minus_baseline"]["median_max_prompt_envelope_chars"],
+            -600.0,
+        )
+        self.assertEqual(
+            comparison["delta_candidate_minus_baseline"]["median_max_tool_schema_json_chars"],
+            -700.0,
+        )
+        self.assertEqual(
+            comparison["delta_candidate_minus_baseline"]["median_prompt_envelope_changes"],
+            -1.0,
+        )
 
 
 class TaskLoadingTests(unittest.TestCase):
