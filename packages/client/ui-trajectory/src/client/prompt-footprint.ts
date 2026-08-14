@@ -26,6 +26,8 @@ function serializedChars(value: unknown): number {
  * Measure the exact string/JSON character footprint the reconstructed request
  * header exposes. This deliberately does not estimate tokens: provider
  * tokenization and message-history attribution are separate concerns.
+ * @param prompt - reconstructed model-request prompt snapshot.
+ * @returns exact character counts for the system and model-visible tool schemas.
  */
 export function promptEnvelopeFootprint(
   prompt: ConversationPromptSnapshot,
@@ -47,7 +49,11 @@ function compactCount(value: number): string {
   return `${Math.round(value / 1_000)}k`
 }
 
-/** Compact ledger label for a request-header prompt envelope. */
+/**
+ * Render a compact ledger label for a request-header prompt envelope.
+ * @param prompt - reconstructed model-request prompt snapshot.
+ * @returns human-readable exact character-footprint summary.
+ */
 export function promptEnvelopeSummary(prompt: ConversationPromptSnapshot): string {
   const footprint = promptEnvelopeFootprint(prompt)
   const largest = footprint.largestTools[0]
