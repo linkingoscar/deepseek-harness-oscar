@@ -89,5 +89,8 @@ jobs:
       - name: Run total sub-dispatch admission tests
         run: pnpm exec vitest run packages/core/tools/tests/code-mode.spec.ts -t maxTotalSubCalls
 
+      - name: Run replay semantics tests
+        run: pnpm exec vitest run packages/core/session/tests/replay.spec.ts
+
       - name: Run trajectory package tests
         run: pnpm exec vitest run packages/client/ui-trajectory/tests
