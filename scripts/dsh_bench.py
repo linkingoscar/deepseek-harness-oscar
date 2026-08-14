@@ -86,6 +86,11 @@ def load_tasks(path: Path) -> list[Task]:
     return tasks
 
 
+def compact_json_chars(value: object) -> tuple[str, int]:
+    serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return serialized, len(serialized)
+
+
 def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
     metrics: JsonObject = {
         "turns": 0,
@@ -102,6 +107,16 @@ def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
         "cache_read_tokens": 0,
         "cache_write_tokens": 0,
         "reasoning_tokens": 0,
+        # Exact reconstructable request-envelope surface. These are character
+        # counts from durable request/header facts, deliberately not token estimates.
+        "request_headers": 0,
+        "prompt_envelope_changes": 0,
+        "max_system_chars": 0,
+        "max_tool_schema_json_chars": 0,
+        "max_prompt_envelope_chars": 0,
+        "max_tool_count": 0,
+        "prompt_envelope_growth_chars": 0,
+        "max_prompt_envelope_step_growth_chars": 0,
     }
     token_targets = {
         "inputTokens": "input_tokens",
@@ -110,12 +125,45 @@ def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
         "cacheWriteTokens": "cache_write_tokens",
         "reasoningTokens": "reasoning_tokens",
     }
+    first_envelope_chars: int | None = None
+    previous_envelope_chars: int | None = None
+    previous_envelope: tuple[str, str] | None = None
+    last_envelope_chars: int | None = None
     for event in events:
         kind = event.get("type")
         if kind == "turn/end":
             metrics["turns"] += 1
         elif kind == "step/end":
             metrics["steps"] += 1
+        elif kind == "request/header":
+            data = event.get("data")
+            header = data.get("header") if isinstance(data, dict) else None
+            if not isinstance(header, dict):
+                continue
+            system = header.get("system")
+            system_text = system if isinstance(system, str) else ""
+            tools = header.get("tools")
+            tool_catalog = tools if isinstance(tools, list) else []
+            tools_json, tools_chars = compact_json_chars(tool_catalog)
+            envelope_chars = len(system_text) + tools_chars
+            metrics["request_headers"] += 1
+            metrics["max_system_chars"] = max(metrics["max_system_chars"], len(system_text))
+            metrics["max_tool_schema_json_chars"] = max(metrics["max_tool_schema_json_chars"], tools_chars)
+            metrics["max_prompt_envelope_chars"] = max(metrics["max_prompt_envelope_chars"], envelope_chars)
+            metrics["max_tool_count"] = max(metrics["max_tool_count"], len(tool_catalog))
+            envelope = (system_text, tools_json)
+            if previous_envelope is not None and envelope != previous_envelope:
+                metrics["prompt_envelope_changes"] += 1
+            if previous_envelope_chars is not None:
+                metrics["max_prompt_envelope_step_growth_chars"] = max(
+                    metrics["max_prompt_envelope_step_growth_chars"],
+                    envelope_chars - previous_envelope_chars,
+                )
+            if first_envelope_chars is None:
+                first_envelope_chars = envelope_chars
+            previous_envelope = envelope
+            previous_envelope_chars = envelope_chars
+            last_envelope_chars = envelope_chars
         elif kind == "tool/call":
             metrics["tool_calls"] += 1
             data = event.get("data")
@@ -145,6 +193,8 @@ def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
     metrics["billed_input_tokens"] = (
         metrics["input_tokens"] + metrics["cache_read_tokens"] + metrics["cache_write_tokens"]
     )
+    if first_envelope_chars is not None and last_envelope_chars is not None:
+        metrics["prompt_envelope_growth_chars"] = last_envelope_chars - first_envelope_chars
     return metrics
 
 
@@ -310,9 +360,21 @@ def summarize(results: list[JsonObject]) -> JsonObject:
         "cache_write_tokens",
         "reasoning_tokens",
         "billed_input_tokens",
+        "request_headers",
+        "prompt_envelope_changes",
     ):
         values = numeric(results, field)
         summary[f"total_{field}"] = int(sum(values)) if values else 0
+        summary[f"median_{field}"] = statistics.median(values) if values else None
+    for field in (
+        "max_system_chars",
+        "max_tool_schema_json_chars",
+        "max_prompt_envelope_chars",
+        "max_tool_count",
+        "prompt_envelope_growth_chars",
+        "max_prompt_envelope_step_growth_chars",
+    ):
+        values = numeric(results, field)
         summary[f"median_{field}"] = statistics.median(values) if values else None
     return summary
 
@@ -366,6 +428,14 @@ def compare_results(baseline: list[JsonObject], candidate: list[JsonObject]) -> 
         "median_code_subcalls",
         "median_billed_input_tokens",
         "median_output_tokens",
+        "median_request_headers",
+        "median_prompt_envelope_changes",
+        "median_max_system_chars",
+        "median_max_tool_schema_json_chars",
+        "median_max_prompt_envelope_chars",
+        "median_max_tool_count",
+        "median_prompt_envelope_growth_chars",
+        "median_max_prompt_envelope_step_growth_chars",
     ):
         before = base_summary.get(field)
         after = candidate_summary.get(field)
