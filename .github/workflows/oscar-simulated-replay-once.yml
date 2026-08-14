@@ -1,0 +1,32 @@
+name: Oscar one-shot simulated replay validation
+
+on:
+  push:
+    branches:
+      - agent/simulated-replay
+    paths:
+      - .github/workflows/oscar-simulated-replay-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/simulated-replay
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Focused replay tests
+        run: pnpm exec vitest run packages/core/session/tests/replay.spec.ts packages/core/session/tests/replay-request.spec.ts
+      - name: Full session tests
+        run: pnpm exec vitest run packages/core/session/tests
+      - name: Static gates
+        run: pnpm run check:ci:static
