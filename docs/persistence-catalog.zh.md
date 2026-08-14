@@ -754,8 +754,10 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  * model-facing outcome in `tool/result`'s own vocabulary
  * (`content` + `isError`), so UIs render a sub-call through the exact
  * code path that renders a native call. A successful settle additionally
- * records the exact serialized JSON bytes delivered to the program; older
- * events may lack that evidence. Every started sub-call settles
+ * records the exact serialized JSON bytes delivered to the program. A
+ * successful tool outcome rejected at the binding-delivery boundary instead
+ * records `deliveryRejection`, keeping execution success separate from
+ * delivery admission; older events may lack either evidence. Every started sub-call settles
  * with exactly one of these (abort included: the aborted pipeline result
  * is an `isError` outcome).
  * Log-only: `deriveMessages()` ignores it, so sub-calls never re-enter

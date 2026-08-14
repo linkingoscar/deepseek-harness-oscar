@@ -2801,13 +2801,22 @@ export interface Config {
    * Must be a non-negative integer.
    */
   maxTotalSubCalls?: number
+  /**
+   * Cumulative canonical JSON bytes successfully delivered from nested tools
+   * to one `run_code` program. The next successful tool result is rejected at
+   * the delivery boundary if it would exceed this limit; the underlying tool
+   * outcome remains successful and is durably recorded as such. Zero disables
+   * this admission mechanism until representative workload evidence sets a
+   * product default. Must be a non-negative safe integer.
+   */
+  maxTotalDeliveredValueBytes?: number
 }
 
 /** How the registry presents its tools to the model (see {@link Config.mode}). */
 export type ToolPresentationMode = 'native' | 'code' | 'both'
 ```
 
-Source: [`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:657`](../packages/core/tools/src/index.ts)
 
 <a id="deepseek-aidsh-typert-loader"></a>
 

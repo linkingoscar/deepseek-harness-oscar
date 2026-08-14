@@ -279,6 +279,8 @@ export interface RunCodeBridgeOptions {
   maxParallel: number
   /** Total accepted submissions for one run; zero disables the cap (validated from `maxTotalSubCalls`). */
   maxTotal: number
+  /** Cumulative successful canonical JSON bytes delivered to one program; zero disables the cap. */
+  maxTotalDeliveredValueBytes: number
   /** Runs the contained `tools/code-dispatch-log` waterfall over one settled sub-dispatch (the registry's private invoker). */
   shapeDispatchLog: (dispatch: CodeDispatchLog) => Promise<ContentBlock[]>
 }
@@ -295,7 +297,7 @@ export interface RunCodeBridgeOptions {
  * @returns the registry-ready definition.
  */
 export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeOptions): ToolDefinition {
-  const { requireRuntime, peekRuntime, maxParallel, maxTotal, shapeDispatchLog } = options
+  const { requireRuntime, peekRuntime, maxParallel, maxTotal, maxTotalDeliveredValueBytes, shapeDispatchLog } = options
   const definition = defineTool({
     name: RUN_CODE_NAME,
     // The description and `code` parameter description are placeholders here:
@@ -344,6 +346,10 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
 
       // Accepted-submission count. Rejected excess calls never consume an id or queue slot.
       let dispatches = 0
+      // Successful canonical result bytes actually delivered to this program.
+      // A rejected next value does not consume budget because it never crosses
+      // the binding boundary. Commit order serializes this counter update.
+      let deliveredValueBytes = 0
       // The per-run scheduler uses the registry's staged interface and follows
       // the same concurrency rules as the native loop. It also follows the
       // native loop's SEQUENCING: every ordered stage (the dispatch-start
@@ -495,15 +501,41 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
             | { kind: 'post-result' | 'final-result'; exec: ToolRunContext; result: ToolExecutionResult }
             | undefined
           const settle = (result: ToolExecutionResult): void => {
-            // The program gets its value NOW: the log-content listener (for
-            // example, a spill backend) must never delay the binding or occupy
-            // a dispatch slot. The event append is tracked side work; the run's
-            // settlement drains logWork so every settle event is still appended
-            // inside the open turn (shapeDispatchLog is contained, so this
-            // chain cannot reject).
+            // Delivery admission is the last synchronous boundary after the
+            // underlying tool pipeline has finalized but before a successful
+            // canonical value crosses into the Code Mode program. It never
+            // rewrites the underlying tool outcome as a tool failure.
+            let deliveredBytes: number | undefined
+            let deliveryRejection: {
+              reason: 'maxTotalDeliveredValueBytes'
+              valueBytes: number
+              deliveredBeforeBytes: number
+              limitBytes: number
+            } | undefined
+            if (!result.isError) {
+              const valueBytes = jsonValueBytes(result.value)
+              const exceeds = maxTotalDeliveredValueBytes > 0
+                && (valueBytes > maxTotalDeliveredValueBytes - deliveredValueBytes)
+              if (exceeds) {
+                deliveryRejection = {
+                  reason: 'maxTotalDeliveredValueBytes',
+                  valueBytes,
+                  deliveredBeforeBytes: deliveredValueBytes,
+                  limitBytes: maxTotalDeliveredValueBytes,
+                }
+              } else {
+                deliveredValueBytes += valueBytes
+                deliveredBytes = valueBytes
+              }
+            }
             resolve(result.isError
               ? { isError: true, message: result.error.message }
-              : { isError: false, value: result.value })
+              : deliveryRejection !== undefined
+                ? {
+                    isError: true,
+                    message: `run_code result-byte delivery limit exceeded (maxTotalDeliveredValueBytes=${maxTotalDeliveredValueBytes}, delivered=${deliveryRejection.deliveredBeforeBytes}, next=${deliveryRejection.valueBytes}); ${name} result not delivered`,
+                  }
+                : { isError: false, value: result.value })
             const agent = exec.agent
             if (agent === undefined) return
             const task: Promise<void> = (async () => {
@@ -517,11 +549,6 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
                 // the log stays detached.
                 content: result.content,
               })
-              // Measure after the asynchronous log-shaping boundary: the
-              // binding promise was already resolved above, so evidence
-              // accounting never becomes a new delivery gate. The canonical
-              // success value is deep-frozen by ToolRuntime.
-              const deliveredValueBytes = result.isError ? undefined : jsonValueBytes(result.value)
               agent.session.append('tool/code-dispatch', {
                 rootCallId: exec.rootCallId,
                 parentCallId: exec.callId,
@@ -533,7 +560,8 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
                 arguments: normalized.logged,
                 isError: result.isError,
                 content: logged,
-                ...deliveredValueBytes === undefined ? {} : { deliveredValueBytes },
+                ...deliveredBytes === undefined ? {} : { deliveredValueBytes: deliveredBytes },
+                ...deliveryRejection === undefined ? {} : { deliveryRejection },
               })
             })().finally(() => { logWork.delete(task) })
             logWork.add(task)

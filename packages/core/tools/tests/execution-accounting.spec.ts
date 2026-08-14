@@ -74,6 +74,7 @@ describe('Code Mode execution accounting', () => {
       failed: 0,
       deliveredValueBytes: 0,
       unmeasuredDeliveredValues: 3,
+      deliveryRejected: 0,
       peakInFlight: 2,
       unsettled: 0,
       orphanSettles: 0,
@@ -81,8 +82,8 @@ describe('Code Mode execution accounting', () => {
       lastSeq: 6,
       dispatchWindowMs: 25,
       byTool: {
-        read_file: { started: 2, settled: 2, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 2 },
-        grep: { started: 1, settled: 1, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 1 },
+        read_file: { started: 2, settled: 2, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 2, deliveryRejected: 0 },
+        grep: { started: 1, settled: 1, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 1, deliveryRejected: 0 },
       },
     }])
   })
@@ -155,4 +156,36 @@ describe('Code Mode execution accounting', () => {
       },
     })
   })
+
+  it('counts explicit delivery rejections separately from legacy unmeasured successes', () => {
+    const events: CodeEvent[] = [
+      start(1, 100, 'parent', 1, 'read'),
+      {
+        type: 'tool/code-dispatch',
+        seq: 2,
+        time: 101,
+        data: {
+          rootCallId: CallId('root'),
+          parentCallId: CallId('parent'),
+          subCallId: CallId('parent:code:1'),
+          name: 'read',
+          arguments: {},
+          isError: false,
+          content: [],
+          deliveryRejection: {
+            reason: 'maxTotalDeliveredValueBytes',
+            valueBytes: 20,
+            deliveredBeforeBytes: 5,
+            limitBytes: 10,
+          },
+        },
+      },
+    ]
+    const [run] = deriveCodeRunExecutionAccounting(events)
+    expect(run?.deliveryRejected).toBe(1)
+    expect(run?.unmeasuredDeliveredValues).toBe(0)
+    expect(run?.deliveredValueBytes).toBe(0)
+    expect(run?.byTool.read?.deliveryRejected).toBe(1)
+  })
+
 })

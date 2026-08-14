@@ -3,7 +3,7 @@ import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
   RunningToolCall, ToolCallBlock, ToolResultNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
-import { deriveCodeRunExecutionAccounting } from '@deepseek-ai/dsh-tools/execution-accounting'
+import { deriveCodeRunExecutionAccounting } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-tools/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 

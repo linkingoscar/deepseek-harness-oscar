@@ -24,6 +24,8 @@ export interface CodeToolAccounting {
   deliveredValueBytes: number
   /** Successful settles whose delivered-value byte evidence is unavailable or cannot be represented exactly. */
   unmeasuredDeliveredValues: number
+  /** Successful tool outcomes explicitly rejected at the Code Mode delivery boundary. */
+  deliveryRejected: number
 }
 
 /**
@@ -47,6 +49,8 @@ export interface CodeRunExecutionAccounting {
   deliveredValueBytes: number
   /** Successful settles whose delivered-value byte evidence is unavailable or cannot be represented exactly. */
   unmeasuredDeliveredValues: number
+  /** Successful tool outcomes explicitly rejected at the Code Mode delivery boundary. */
+  deliveryRejected: number
   /** Maximum number of started-but-not-yet-settled sub-dispatches observed in event order. */
   peakInFlight: number
   /** Started calls that have no matching settle event in the supplied log slice. */
@@ -71,6 +75,7 @@ interface MutableRunAccounting {
   failed: number
   deliveredValueBytes: number
   unmeasuredDeliveredValues: number
+  deliveryRejected: number
   peakInFlight: number
   orphanSettles: number
   firstSeq: number
@@ -84,7 +89,7 @@ interface MutableRunAccounting {
 function toolCounter(run: MutableRunAccounting, name: string): CodeToolAccounting {
   let counter = run.byTool.get(name)
   if (counter === undefined) {
-    counter = { started: 0, settled: 0, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 0 }
+    counter = { started: 0, settled: 0, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 0, deliveryRejected: 0 }
     run.byTool.set(name, counter)
   }
   return counter
@@ -105,6 +110,7 @@ function getRun(
       failed: 0,
       deliveredValueBytes: 0,
       unmeasuredDeliveredValues: 0,
+      deliveryRejected: 0,
       peakInFlight: 0,
       orphanSettles: 0,
       firstSeq: event.seq,
@@ -155,17 +161,22 @@ export function deriveCodeRunExecutionAccounting(
     counter.settled += 1
     if (event.data.isError) counter.failed += 1
     else {
-      const delivered = event.data.deliveredValueBytes
-      if (typeof delivered === 'number' && Number.isSafeInteger(delivered) && delivered >= 0) {
+      if (event.data.deliveryRejection !== undefined) {
+        run.deliveryRejected += 1
+        counter.deliveryRejected += 1
+      } else {
+        const delivered = event.data.deliveredValueBytes
+        if (typeof delivered === 'number' && Number.isSafeInteger(delivered) && delivered >= 0) {
         const runTotal = run.deliveredValueBytes + delivered
         if (Number.isSafeInteger(runTotal)) run.deliveredValueBytes = runTotal
         else run.unmeasuredDeliveredValues += 1
         const toolTotal = counter.deliveredValueBytes + delivered
         if (Number.isSafeInteger(toolTotal)) counter.deliveredValueBytes = toolTotal
         else counter.unmeasuredDeliveredValues += 1
-      } else {
-        run.unmeasuredDeliveredValues += 1
-        counter.unmeasuredDeliveredValues += 1
+        } else {
+          run.unmeasuredDeliveredValues += 1
+          counter.unmeasuredDeliveredValues += 1
+        }
       }
     }
 
@@ -182,6 +193,7 @@ export function deriveCodeRunExecutionAccounting(
     failed: run.failed,
     deliveredValueBytes: run.deliveredValueBytes,
     unmeasuredDeliveredValues: run.unmeasuredDeliveredValues,
+    deliveryRejected: run.deliveryRejected,
     peakInFlight: run.peakInFlight,
     unsettled: run.active.size,
     orphanSettles: run.orphanSettles,

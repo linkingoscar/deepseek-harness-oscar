@@ -752,8 +752,10 @@ Source: [`packages/core/session/src/types.ts:279`](../packages/core/session/src/
  * model-facing outcome in `tool/result`'s own vocabulary
  * (`content` + `isError`), so UIs render a sub-call through the exact
  * code path that renders a native call. A successful settle additionally
- * records the exact serialized JSON bytes delivered to the program; older
- * events may lack that evidence. Every started sub-call settles
+ * records the exact serialized JSON bytes delivered to the program. A
+ * successful tool outcome rejected at the binding-delivery boundary instead
+ * records `deliveryRejection`, keeping execution success separate from
+ * delivery admission; older events may lack either evidence. Every started sub-call settles
  * with exactly one of these (abort included: the aborted pipeline result
  * is an `isError` outcome).
  * Log-only: `deriveMessages()` ignores it, so sub-calls never re-enter
@@ -765,7 +767,7 @@ Source: [`packages/core/session/src/types.ts:279`](../packages/core/session/src/
 'tool/code-dispatch': CodeDispatchEventData
 ```
 
-Source: [`packages/core/tools/src/types.ts:60`](../packages/core/tools/src/types.ts)
+Source: [`packages/core/tools/src/types.ts:74`](../packages/core/tools/src/types.ts)
 
 <a id="toolcode-dispatch-start--log-only"></a>
 
@@ -788,7 +790,7 @@ Source: [`packages/core/tools/src/types.ts:60`](../packages/core/tools/src/types
 'tool/code-dispatch-start': CodeDispatchStartEventData
 ```
 
-Source: [`packages/core/tools/src/types.ts:42`](../packages/core/tools/src/types.ts)
+Source: [`packages/core/tools/src/types.ts:54`](../packages/core/tools/src/types.ts)
 
 <a id="toolresult--surface"></a>
 

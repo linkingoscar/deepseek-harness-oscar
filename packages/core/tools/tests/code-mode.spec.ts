@@ -44,6 +44,7 @@ interface SetupOptions {
   mode?: Config['mode']
   maxParallelSubCalls?: number
   maxTotalSubCalls?: number
+  maxTotalDeliveredValueBytes?: number
   runtime?: false | { language?: string }
   toolOrder?: string[]
 }
@@ -55,6 +56,7 @@ async function setup(options: SetupOptions = {}) {
     mode: options.mode ?? 'code',
     ...options.maxParallelSubCalls !== undefined ? { maxParallelSubCalls: options.maxParallelSubCalls } : {},
     ...options.maxTotalSubCalls !== undefined ? { maxTotalSubCalls: options.maxTotalSubCalls } : {},
+    ...options.maxTotalDeliveredValueBytes !== undefined ? { maxTotalDeliveredValueBytes: options.maxTotalDeliveredValueBytes } : {},
   })
   let runtime: FakeRuntime | undefined
   if (options.runtime !== false) {
@@ -889,11 +891,11 @@ describe('the run_code dispatch bridge', () => {
     expect(dispatches.map(event => event.data)).toEqual([
       {
         rootCallId: 'call-1', parentCallId: 'call-1', subCallId: 'call-1:code:1', name: 'echo',
-        arguments: { value: 'one' }, isError: false, content: [{ type: 'text', text: 'echo:one' }],
+        arguments: { value: 'one' }, isError: false, content: [{ type: 'text', text: 'echo:one' }], deliveredValueBytes: 10,
       },
       {
         rootCallId: 'call-1', parentCallId: 'call-1', subCallId: 'call-1:code:2', name: 'echo',
-        arguments: { value: 'two' }, isError: false, content: [{ type: 'text', text: 'echo:two' }],
+        arguments: { value: 'two' }, isError: false, content: [{ type: 'text', text: 'echo:two' }], deliveredValueBytes: 10,
       },
     ])
     expect(result.meta).toBeUndefined()
@@ -1002,6 +1004,51 @@ describe('the run_code dispatch bridge', () => {
       ['enter', 'c'], ['exit', 'c'],
     ])
     expect(result.content[0]).toEqual({ type: 'text', text: 'a,b,c' })
+  })
+
+  it('rejects only delivery when cumulative successful result bytes would exceed the run budget', async () => {
+    const { ctx, runtime } = await setup({ mode: 'code', maxTotalDeliveredValueBytes: 8 })
+    const executions: string[] = []
+    ctx.tools.register(defineTool({
+      name: 'value',
+      description: 'Return a requested string.',
+      parameters: { text: { type: 'string', required: true } },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => [{ type: 'text', text: value }],
+      },
+      execute(args) {
+        executions.push(args.text)
+        return Promise.resolve(args.text)
+      },
+    }))
+    const { agent, events } = fakeAgent()
+    runtime.behavior = async (request) => {
+      const tool = request.bindings[0]!.functions.value!
+      const first = await tool({ text: 'abc' }) // JSON bytes: 5
+      const second = await tool({ text: 'de' }).then(
+        () => 'unexpected',
+        (error: unknown) => error instanceof Error ? error.message : String(error),
+      )
+      return { logs: [], value: `${String(first)}|${second}` }
+    }
+    const result = await runCode(ctx, 'program', { agent })
+    expect(result.isError).toBe(false)
+    expect(executions).toEqual(['abc', 'de'])
+    if (result.isError) throw new Error('expected run success')
+    expect(result.value.result).toContain('maxTotalDeliveredValueBytes=8')
+    const settles = events.filter(event => event.type === 'tool/code-dispatch')
+    expect(settles).toHaveLength(2)
+    expect(settles[0]?.data).toMatchObject({ isError: false, deliveredValueBytes: 5 })
+    expect(settles[1]?.data).toMatchObject({
+      isError: false,
+      deliveryRejection: {
+        reason: 'maxTotalDeliveredValueBytes',
+        valueBytes: 4,
+        deliveredBeforeBytes: 5,
+        limitBytes: 8,
+      },
+    })
   })
 
   it('rejects the program-side call when the tool errors, with the tool error text', async () => {

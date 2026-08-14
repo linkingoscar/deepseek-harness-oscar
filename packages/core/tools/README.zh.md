@@ -13,9 +13,10 @@ tools:
   mode: native
   maxParallelSubCalls: 10
   maxTotalSubCalls: 0
+  maxTotalDeliveredValueBytes: 0
 ```
 
-`maxParallelSubCalls` 只限制 Code Mode 同时重叠的 dispatch 窗口；`maxTotalSubCalls` 则限制一次 `run_code` 接受的 sub-dispatch 提交总数，仍在队列中的调用也立即计数。总量上限默认 `0`（禁用），直到代表性 workload evidence 足以支持产品阈值。两者彼此独立：降低并发不会自动降低程序可提交的总工作量。成功的持久化 `tool/code-dispatch` settle 还会记录实际交付给程序的规范值所占的精确 JSON UTF-8 字节数；execution accounting 会把缺少该证据的旧版成功 settle 单独计数，而不会把未知字节误当成 0。行为中性的 projection 以 `@deepseek-ai/dsh-tools/execution-accounting` 导出，供 Agent DevTools 等证据消费者使用；它仍不能作为实时 admission 计数器。
+`maxParallelSubCalls` 只限制 Code Mode 同时重叠的 dispatch 窗口；`maxTotalSubCalls` 则限制一次 `run_code` 接受的 sub-dispatch 提交总数，仍在队列中的调用也立即计数。总量上限默认 `0`（禁用），直到代表性 workload evidence 足以支持产品阈值。两者彼此独立：降低并发不会自动降低程序可提交的总工作量。成功的持久化 `tool/code-dispatch` settle 还会记录实际交付给程序的规范值所占的精确 JSON UTF-8 字节数；`maxTotalDeliveredValueBytes` 使用同一规范字节定义，在单次运行累计上限将被突破时只拒绝成功嵌套结果的交付，同时保留底层工具执行为成功；execution accounting 会把缺少该证据的旧版成功 settle 单独计数，而不会把未知字节误当成 0。行为中性的 projection 以 `@deepseek-ai/dsh-tools/execution-accounting` 导出，供 Agent DevTools 等证据消费者使用；它仍不能作为实时 admission 计数器。
 
 `native` 以函数定义的形式贡献可见工具。`code` 会提供保留的 `run_code` 传输、生成的 `tools:sdk` 段，以及声明「只有 `run_code` 可被直接调用」的 `tools:code-only` 规则。执行器随后强制执行该规则：模型直接调用其他任何工具时，会在策略运行前将该调用解析为 `UNKNOWN_TOOL`；`both` 同时提供两种形式，且不声明该规则，因为其中的原生调用确实可以执行。没有单独声明呈现模式的 agent 默认采用此配置；agent preset 可通过 [`dsh-agent-tool-presentation`](../agent-tool-presentation/README.md) 自行选择呈现模式。不能注册、遮蔽、限制或移除该保留传输，且无论配置何种模式，该名称都是保留的，因为任何 agent 都可能选择 code 模式。非原生模式要求所加载 `ctx.codeRuntime` 的 `language` 有已注册的 SDK 渲染器——TypeScript 经 [`dsh-code-runtime-worker-thread`](../../code-runtime/code-runtime-worker-thread/README.md) 交付；Python 渲染器内置，驱动任何报告 `language: 'python'` 的运行时（第一方 `dsh-code-runtime-python` 后端另行交付）。没有渲染器的运行时语言会导致提示词组装明确失败；如果 `systemPrompt.toolOrder` 条目指向当前模式未贡献的工具，系统会拒绝组装提示词。`system-prompt/assemble` 监听器可以替换注册表贡献；它返回的组装结果具有权威性，因此该监听器负责保留可用的 Code Mode 协议。
 

@@ -25,6 +25,9 @@ import { createRunCodeTool, RUN_CODE_NAME, SDK_SECTION_ORDER } from './code-mode
 import type { CodeSdkLanguage } from './code-mode.ts'
 import { renderToolsSdk } from './ts-types.ts'
 import type { ToolSdkSchema } from './ts-types.ts'
+
+export { deriveCodeRunExecutionAccounting } from './execution-accounting.ts'
+export type { CodeRunExecutionAccounting, CodeToolAccounting } from './execution-accounting.ts'
 import { renderToolsSdkPy } from './py-types.ts'
 
 /**
@@ -679,6 +682,15 @@ export interface Config {
    * Must be a non-negative integer.
    */
   maxTotalSubCalls?: number
+  /**
+   * Cumulative canonical JSON bytes successfully delivered from nested tools
+   * to one `run_code` program. The next successful tool result is rejected at
+   * the delivery boundary if it would exceed this limit; the underlying tool
+   * outcome remains successful and is durably recorded as such. Zero disables
+   * this admission mechanism until representative workload evidence sets a
+   * product default. Must be a non-negative safe integer.
+   */
+  maxTotalDeliveredValueBytes?: number
 }
 
 /**
@@ -797,6 +809,15 @@ function resolveMaxTotalSubCalls(value: number | undefined): number {
   return maxTotalSubCalls
 }
 
+/** Resolve the cumulative successful-delivery byte cap; zero keeps the mechanism disabled. */
+function resolveMaxTotalDeliveredValueBytes(value: number | undefined): number {
+  const maxTotalDeliveredValueBytes = value ?? 0
+  if (!Number.isSafeInteger(maxTotalDeliveredValueBytes) || maxTotalDeliveredValueBytes < 0) {
+    throw new Error('maxTotalDeliveredValueBytes must be a non-negative safe integer')
+  }
+  return maxTotalDeliveredValueBytes
+}
+
 /**
  * Tool registry and execution pipeline. Scoped registrations shadow globals;
  * one visibility resolver feeds presentation, lookup, and dispatch.
@@ -808,6 +829,7 @@ export class ToolRuntime extends Service {
     mode: z.union(['native', 'code', 'both'] as const).default('native'),
     maxParallelSubCalls: z.natural().min(1).default(10),
     maxTotalSubCalls: z.natural().default(0),
+    maxTotalDeliveredValueBytes: z.natural().default(0),
   })
 
   /** Internal staged view consumed by `dsh-agent-loop`'s parallel scheduler. */
@@ -834,6 +856,7 @@ export class ToolRuntime extends Service {
   private readonly defaultMode: ToolPresentationMode
   private readonly maxParallelSubCalls: number
   private readonly maxTotalSubCalls: number
+  private readonly maxTotalDeliveredValueBytes: number
   /**
    * Reserved presentation transport, kept outside the filterable registration
    * layers. Built on first need rather than at construction: which agents run
@@ -849,6 +872,7 @@ export class ToolRuntime extends Service {
     this.defaultMode = config.mode ?? 'native'
     this.maxParallelSubCalls = resolveMaxParallelSubCalls(config.maxParallelSubCalls)
     this.maxTotalSubCalls = resolveMaxTotalSubCalls(config.maxTotalSubCalls)
+    this.maxTotalDeliveredValueBytes = resolveMaxTotalDeliveredValueBytes(config.maxTotalDeliveredValueBytes)
     ctx.systemPrompt.tools(context => this.wireSchemas(context.scope))
     if (this.defaultMode !== 'native') {
       ctx.systemPrompt.section(this.collapseSection())
@@ -948,6 +972,7 @@ export class ToolRuntime extends Service {
       peekRuntime: () => this.ctx.get('codeRuntime'),
       maxParallel: this.maxParallelSubCalls,
       maxTotal: this.maxTotalSubCalls,
+      maxTotalDeliveredValueBytes: this.maxTotalDeliveredValueBytes,
       shapeDispatchLog: dispatch => this.shapeDispatchLog(dispatch),
     })
     return this.codeTransport
