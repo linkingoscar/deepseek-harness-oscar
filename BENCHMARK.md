@@ -56,12 +56,23 @@ Metrics are derived from the same root-session events that drive replay:
 - wall-clock agent time,
 - finish reason,
 - turns and steps,
-- tool calls and structured tool errors,
+- model-visible top-level tool calls and structured tool errors,
+- `run_code` calls,
+- Code Mode sub-dispatches and sub-dispatch errors,
+- operational leaf tool calls,
 - uncached input tokens,
 - output tokens,
 - cache-read and cache-write tokens,
 - reasoning tokens,
 - billed input tokens (`input + cache read + cache write`).
+
+`tool_calls` counts `tool/call` events, so it measures model-visible calls. That number is intentionally not used as a proxy for execution work under Code Mode: one `run_code` can dispatch many tools without putting those sub-calls into model history. The runner therefore also counts `tool/code-dispatch` events and reports:
+
+```text
+leaf_tool_calls = tool_calls - run_code_calls + code_subcalls
+```
+
+In native mode `leaf_tool_calls == tool_calls`. In Code Mode the transport call is removed and the actual SDK sub-dispatches are added back. This lets a comparison distinguish fewer model round trips from less underlying tool work.
 
 Token fields are summed from `assistant/message.data.usage` when the selected adapter reports usage. Missing provider accounting remains missing rather than being estimated.
 
@@ -77,11 +88,48 @@ python scripts/dsh_bench.py compare \
 
 The comparison reports baseline/candidate summaries, candidate-minus-baseline deltas, and explicit pass-to-fail regressions or fail-to-pass improvements. Pairing is by `(task_id, repetition)`, so unrelated or partially completed runs do not silently contaminate the comparison.
 
+## Native vs Code Mode
+
+The repository includes two deliberately narrow JSON-RPC compositions with the same model-facing capabilities:
+
+- `examples/jsonrpc-agent/minimal.cordis.yml`: native function calling.
+- `examples/jsonrpc-agent/minimal-code.cordis.yml`: TypeScript Code Mode using `@deepseek-ai/dsh-code-runtime-worker-thread`.
+
+The Code Mode composition keeps the same persistent Bash and string-replace editor tools and the same danger-full-access benchmark posture. Its meaningful experimental differences are the tool presentation (`mode: code`) and the worker-thread execution transport needed by `run_code`.
+
+Run the same task set through both compositions with one command:
+
+```sh
+python scripts/dsh_bench.py compare-modes benchmarks/tasks.jsonl \
+  --output-dir .bench/code-mode \
+  --model deepseek-v4-flash \
+  --repeat 3
+```
+
+This writes:
+
+- `.bench/code-mode/native.jsonl`
+- `.bench/code-mode/code.jsonl`
+- `.bench/code-mode/comparison.json`
+- separate durable session directories under `.bench/code-mode/sessions/`
+
+Each task's `prepare` command runs before every repetition in every mode, so a destructive coding task must reset its workspace completely. Do not compare modes against a workspace whose prepare step leaves changes from the previous variant.
+
+The first Code Mode questions to answer are empirical:
+
+1. Does pass rate improve, regress, or stay flat?
+2. Does Code Mode reduce model steps and model-visible tool calls?
+3. Is any reduction merely transport collapse, or does `leaf_tool_calls` also fall?
+4. What happens to billed input/output tokens and wall-clock latency?
+5. Are failures concentrated in `run_code`, its sub-dispatches, or the same leaf tools that fail natively?
+
+Do not call Code Mode an efficiency win solely because `tool_calls` fell. A successful result is stronger when task success holds or improves and the reduction survives the leaf-call, token, and latency views.
+
 ## Benchmark discipline
 
 For changes intended to improve agent quality, keep the following together in the PR:
 
-1. the hypothesis (for example, "Code Mode reduces tool-round trips on repository search tasks"),
+1. the hypothesis (for example, "Code Mode reduces model round trips on repository search tasks without lowering success rate"),
 2. the benchmark task set or a reproducible reference to it,
 3. baseline and candidate settings,
 4. pass-rate and efficiency deltas,

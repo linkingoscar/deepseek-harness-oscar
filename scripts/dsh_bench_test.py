@@ -16,12 +16,15 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BenchMetricsTests(unittest.TestCase):
-    def test_event_metrics_sum_usage_and_trajectory(self) -> None:
+    def test_event_metrics_sum_usage_and_code_mode_trajectory(self) -> None:
         events = [
             {"type": "turn/end", "data": {}},
             {"type": "step/end", "data": {}},
-            {"type": "tool/call", "data": {}},
-            {"type": "tool/result", "data": {"error": {"code": "boom"}}},
+            {"type": "tool/call", "data": {"name": "run_code"}},
+            {"type": "tool/result", "data": {}},
+            {"type": "tool/code-dispatch-start", "data": {"name": "bash"}},
+            {"type": "tool/code-dispatch", "data": {"name": "bash", "isError": False}},
+            {"type": "tool/code-dispatch", "data": {"name": "str_replace_editor", "isError": True}},
             {
                 "type": "assistant/message",
                 "data": {
@@ -41,11 +44,25 @@ class BenchMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["turns"], 1)
         self.assertEqual(metrics["steps"], 1)
         self.assertEqual(metrics["tool_calls"], 1)
-        self.assertEqual(metrics["tool_errors"], 1)
+        self.assertEqual(metrics["run_code_calls"], 1)
+        self.assertEqual(metrics["code_subcalls"], 2)
+        self.assertEqual(metrics["code_subcall_errors"], 1)
+        self.assertEqual(metrics["leaf_tool_calls"], 2)
+        self.assertEqual(metrics["tool_errors"], 0)
         self.assertEqual(metrics["input_tokens"], 10)
         self.assertEqual(metrics["output_tokens"], 3)
         self.assertEqual(metrics["reasoning_tokens"], 4)
         self.assertEqual(metrics["billed_input_tokens"], 17)
+
+    def test_native_leaf_calls_equal_model_tool_calls(self) -> None:
+        metrics = MODULE.event_metrics([
+            {"type": "tool/call", "data": {"name": "bash"}},
+            {"type": "tool/call", "data": {"name": "str_replace_editor"}},
+        ])
+        self.assertEqual(metrics["tool_calls"], 2)
+        self.assertEqual(metrics["leaf_tool_calls"], 2)
+        self.assertEqual(metrics["run_code_calls"], 0)
+        self.assertEqual(metrics["code_subcalls"], 0)
 
     def test_compare_pairs_by_task_and_repetition(self) -> None:
         baseline = [
@@ -58,6 +75,8 @@ class BenchMetricsTests(unittest.TestCase):
                 "turns": 1,
                 "steps": 1,
                 "tool_calls": 2,
+                "leaf_tool_calls": 2,
+                "code_subcalls": 0,
                 "billed_input_tokens": 100,
                 "output_tokens": 20,
             },
@@ -72,7 +91,9 @@ class BenchMetricsTests(unittest.TestCase):
                 "agent_seconds": 3.0,
                 "turns": 2,
                 "steps": 2,
-                "tool_calls": 3,
+                "tool_calls": 1,
+                "leaf_tool_calls": 3,
+                "code_subcalls": 3,
                 "billed_input_tokens": 120,
                 "output_tokens": 25,
             },
@@ -85,7 +106,9 @@ class BenchMetricsTests(unittest.TestCase):
         self.assertEqual(comparison["regressions"], ["a#1"])
         self.assertEqual(comparison["improvements"], [])
         self.assertEqual(comparison["delta_candidate_minus_baseline"]["pass_rate"], -1.0)
-        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_tool_calls"], 1.0)
+        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_tool_calls"], -1.0)
+        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_leaf_tool_calls"], 1.0)
+        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_code_subcalls"], 3.0)
 
 
 class TaskLoadingTests(unittest.TestCase):
@@ -102,6 +125,19 @@ class TaskLoadingTests(unittest.TestCase):
     def test_command_must_be_argv_array(self) -> None:
         with self.assertRaisesRegex(ValueError, "non-empty JSON array"):
             MODULE.optional_command("pytest -q", source="task.check")
+
+
+class ParserTests(unittest.TestCase):
+    def test_compare_modes_defaults_to_checked_in_compositions(self) -> None:
+        parsed = MODULE.parser().parse_args([
+            "compare-modes",
+            "tasks.jsonl",
+            "--output-dir",
+            ".bench/code-mode",
+        ])
+        self.assertEqual(parsed.native_cordis, MODULE.DEFAULT_NATIVE_CORDIS)
+        self.assertEqual(parsed.code_cordis, MODULE.DEFAULT_CODE_CORDIS)
+        self.assertEqual(parsed.repeat, 1)
 
 
 if __name__ == "__main__":

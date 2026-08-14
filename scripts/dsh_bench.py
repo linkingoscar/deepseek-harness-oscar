@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 JsonObject = dict[str, Any]
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_NATIVE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal.cordis.yml"
+DEFAULT_CODE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal-code.cordis.yml"
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,8 +84,13 @@ def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
     metrics: JsonObject = {
         "turns": 0,
         "steps": 0,
+        # Model-visible top-level calls. In Code Mode this includes run_code,
+        # not the SDK sub-dispatches hidden from model history.
         "tool_calls": 0,
         "tool_errors": 0,
+        "run_code_calls": 0,
+        "code_subcalls": 0,
+        "code_subcall_errors": 0,
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_read_tokens": 0,
@@ -104,10 +112,18 @@ def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
             metrics["steps"] += 1
         elif kind == "tool/call":
             metrics["tool_calls"] += 1
+            data = event.get("data")
+            if isinstance(data, dict) and data.get("name") == "run_code":
+                metrics["run_code_calls"] += 1
         elif kind == "tool/result":
             data = event.get("data")
             if isinstance(data, dict) and isinstance(data.get("error"), dict):
                 metrics["tool_errors"] += 1
+        elif kind == "tool/code-dispatch":
+            metrics["code_subcalls"] += 1
+            data = event.get("data")
+            if isinstance(data, dict) and data.get("isError") is True:
+                metrics["code_subcall_errors"] += 1
         elif kind == "assistant/message":
             data = event.get("data")
             usage = data.get("usage") if isinstance(data, dict) else None
@@ -117,6 +133,9 @@ def event_metrics(events: Iterable[JsonObject]) -> JsonObject:
                 count = usage.get(wire_name)
                 if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
                     metrics[target] += count
+    # Operational leaf calls exclude the run_code transport itself and include
+    # the native tools it dispatches. Native mode therefore equals tool_calls.
+    metrics["leaf_tool_calls"] = metrics["tool_calls"] - metrics["run_code_calls"] + metrics["code_subcalls"]
     metrics["billed_input_tokens"] = (
         metrics["input_tokens"] + metrics["cache_read_tokens"] + metrics["cache_write_tokens"]
     )
@@ -163,7 +182,16 @@ def slug(value: str) -> str:
     return cleaned[:80] or "task"
 
 
-def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, sessions_dir: Path) -> JsonObject:
+def run_one(
+    task: Task,
+    args: argparse.Namespace,
+    repetition: int,
+    run_id: str,
+    sessions_dir: Path,
+    *,
+    cordis: Path | None = None,
+    variant: str | None = None,
+) -> JsonObject:
     if not task.workspace.is_dir():
         raise ValueError(f"task {task.id!r}: workspace does not exist or is not a directory: {task.workspace}")
 
@@ -171,7 +199,7 @@ def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, 
     if task.prepare is not None:
         prepare = run_command(task.prepare, cwd=task.workspace, timeout_seconds=args.command_timeout)
         if prepare["exit_code"] != 0:
-            return {
+            row: JsonObject = {
                 "task_id": task.id,
                 "repetition": repetition,
                 "workspace": str(task.workspace),
@@ -182,6 +210,9 @@ def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, 
                 "scored": task.check is not None,
                 "prepare": prepare,
             }
+            if variant is not None:
+                row["variant"] = variant
+            return row
 
     try:
         from deepseek_harness import DeepSeekHarness
@@ -191,7 +222,8 @@ def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, 
             "`python -m pip install deepseek-harness-sdk`"
         ) from exc
 
-    session_id = f"bench-{slug(run_id)}-{slug(task.id)}-{repetition}"
+    variant_fragment = f"-{slug(variant)}" if variant else ""
+    session_id = f"bench-{slug(run_id)}{variant_fragment}-{slug(task.id)}-{repetition}"
     harness_kwargs: JsonObject = {
         "provider": args.provider,
         "model": args.model,
@@ -200,8 +232,9 @@ def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, 
     }
     if args.max_tokens is not None:
         harness_kwargs["max_tokens"] = args.max_tokens
-    if args.cordis is not None:
-        harness_kwargs["cordis"] = str(args.cordis.resolve())
+    selected_cordis = cordis if cordis is not None else args.cordis
+    if selected_cordis is not None:
+        harness_kwargs["cordis"] = str(selected_cordis.resolve())
 
     with DeepSeekHarness(**harness_kwargs) as harness:
         started = time.perf_counter()
@@ -213,7 +246,7 @@ def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, 
         check = run_command(task.check, cwd=task.workspace, timeout_seconds=args.command_timeout)
     success = check is not None and check["exit_code"] == 0
     metrics = event_metrics(result.events)
-    return {
+    row = {
         "task_id": task.id,
         "repetition": repetition,
         "workspace": str(task.workspace),
@@ -231,6 +264,9 @@ def run_one(task: Task, args: argparse.Namespace, repetition: int, run_id: str, 
         "check": check,
         **metrics,
     }
+    if variant is not None:
+        row["variant"] = variant
+    return row
 
 
 def numeric(values: Iterable[JsonObject], field: str) -> list[float]:
@@ -258,6 +294,10 @@ def summarize(results: list[JsonObject]) -> JsonObject:
         "steps",
         "tool_calls",
         "tool_errors",
+        "run_code_calls",
+        "code_subcalls",
+        "code_subcall_errors",
+        "leaf_tool_calls",
         "input_tokens",
         "output_tokens",
         "cache_read_tokens",
@@ -316,6 +356,8 @@ def compare_results(baseline: list[JsonObject], candidate: list[JsonObject]) -> 
         "median_turns",
         "median_steps",
         "median_tool_calls",
+        "median_leaf_tool_calls",
+        "median_code_subcalls",
         "median_billed_input_tokens",
         "median_output_tokens",
     ):
@@ -335,23 +377,52 @@ def compare_results(baseline: list[JsonObject], candidate: list[JsonObject]) -> 
     }
 
 
-def command_run(args: argparse.Namespace) -> int:
-    tasks = load_tasks(args.tasks)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    run_id = args.run_id or uuid.uuid4().hex[:12]
-    sessions_dir = (args.session_root or args.output.parent / f"{args.output.stem}-sessions").resolve()
+def run_task_set(
+    tasks: list[Task],
+    args: argparse.Namespace,
+    *,
+    output_path: Path,
+    run_id: str,
+    sessions_dir: Path,
+    cordis: Path | None = None,
+    variant: str | None = None,
+) -> list[JsonObject]:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     sessions_dir.mkdir(parents=True, exist_ok=True)
     results: list[JsonObject] = []
-    with args.output.open("w", encoding="utf-8") as output:
+    with output_path.open("w", encoding="utf-8") as output:
         for repetition in range(1, args.repeat + 1):
             for task in tasks:
-                print(f"[{task.id} #{repetition}] running", file=sys.stderr, flush=True)
-                row = run_one(task, args, repetition, run_id, sessions_dir)
+                prefix = f"[{variant}] " if variant else ""
+                print(f"{prefix}[{task.id} #{repetition}] running", file=sys.stderr, flush=True)
+                row = run_one(
+                    task,
+                    args,
+                    repetition,
+                    run_id,
+                    sessions_dir,
+                    cordis=cordis,
+                    variant=variant,
+                )
                 results.append(row)
                 output.write(json.dumps(row, ensure_ascii=False) + "\n")
                 output.flush()
                 state = "PASS" if row.get("success") is True else "FAIL" if row.get("success") is False else "UNSCORED"
-                print(f"[{task.id} #{repetition}] {state}", file=sys.stderr, flush=True)
+                print(f"{prefix}[{task.id} #{repetition}] {state}", file=sys.stderr, flush=True)
+    return results
+
+
+def command_run(args: argparse.Namespace) -> int:
+    tasks = load_tasks(args.tasks)
+    run_id = args.run_id or uuid.uuid4().hex[:12]
+    sessions_dir = (args.session_root or args.output.parent / f"{args.output.stem}-sessions").resolve()
+    results = run_task_set(
+        tasks,
+        args,
+        output_path=args.output,
+        run_id=run_id,
+        sessions_dir=sessions_dir,
+    )
     print(json.dumps(summarize(results), ensure_ascii=False, indent=2))
     return 0
 
@@ -362,6 +433,55 @@ def command_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_compare_modes(args: argparse.Namespace) -> int:
+    tasks = load_tasks(args.tasks)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    run_id = args.run_id or uuid.uuid4().hex[:12]
+    sessions_root = (args.session_root or args.output_dir / "sessions").resolve()
+    native_output = args.output_dir / "native.jsonl"
+    code_output = args.output_dir / "code.jsonl"
+
+    native = run_task_set(
+        tasks,
+        args,
+        output_path=native_output,
+        run_id=run_id,
+        sessions_dir=sessions_root / "native",
+        cordis=args.native_cordis,
+        variant="native",
+    )
+    code = run_task_set(
+        tasks,
+        args,
+        output_path=code_output,
+        run_id=run_id,
+        sessions_dir=sessions_root / "code",
+        cordis=args.code_cordis,
+        variant="code",
+    )
+    comparison = compare_results(native, code)
+    comparison.update({
+        "baseline_variant": "native",
+        "candidate_variant": "code",
+        "native_cordis": str(args.native_cordis.resolve()),
+        "code_cordis": str(args.code_cordis.resolve()),
+    })
+    comparison_path = args.output_dir / "comparison.json"
+    comparison_path.write_text(json.dumps(comparison, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(comparison, ensure_ascii=False, indent=2))
+    return 0
+
+
+def add_harness_options(command: argparse.ArgumentParser) -> None:
+    command.add_argument("--provider", default="deepseek-official")
+    command.add_argument("--model", default="deepseek-v4-flash")
+    command.add_argument("--max-tokens", type=int)
+    command.add_argument("--repeat", type=int, default=1)
+    command.add_argument("--command-timeout", type=float, default=900.0)
+    command.add_argument("--session-root", type=Path)
+    command.add_argument("--run-id")
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Run and compare DeepSeek Harness benchmark tasks.")
     commands = root.add_subparsers(dest="command", required=True)
@@ -369,20 +489,28 @@ def parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="run a JSONL task set and write JSONL results")
     run.add_argument("tasks", type=Path)
     run.add_argument("--output", type=Path, required=True)
-    run.add_argument("--provider", default="deepseek-official")
-    run.add_argument("--model", default="deepseek-v4-flash")
-    run.add_argument("--max-tokens", type=int)
     run.add_argument("--cordis", type=Path)
-    run.add_argument("--repeat", type=int, default=1)
-    run.add_argument("--command-timeout", type=float, default=900.0)
-    run.add_argument("--session-root", type=Path)
-    run.add_argument("--run-id")
+    add_harness_options(run)
     run.set_defaults(handler=command_run)
 
     compare = commands.add_parser("compare", help="compare two JSONL result files on paired task runs")
     compare.add_argument("baseline", type=Path)
     compare.add_argument("candidate", type=Path)
     compare.set_defaults(handler=command_compare)
+
+    modes = commands.add_parser(
+        "compare-modes",
+        help="run the same tasks under native and Code Mode minimal compositions",
+    )
+    modes.add_argument("tasks", type=Path)
+    modes.add_argument("--output-dir", type=Path, required=True)
+    modes.add_argument("--native-cordis", type=Path, default=DEFAULT_NATIVE_CORDIS)
+    modes.add_argument("--code-cordis", type=Path, default=DEFAULT_CODE_CORDIS)
+    # Kept for run_one's common selection path; compare-modes always supplies
+    # an explicit per-variant composition.
+    modes.set_defaults(cordis=None)
+    add_harness_options(modes)
+    modes.set_defaults(handler=command_compare_modes)
     return root
 
 
