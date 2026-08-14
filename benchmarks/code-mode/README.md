@@ -1,5 +1,7 @@
 # Code Mode micro-eval suite
 
+English | [中文](README.zh.md)
+
 This suite isolates workloads where an execution plane can plausibly help: fan-out reads, search-then-read aggregation, multi-file edits, and dependency traversal. It is synthetic on purpose. The fixtures make task correctness deterministic while the Harness trajectory remains free to vary.
 
 Materialize disposable workspaces and a benchmark JSONL file:
