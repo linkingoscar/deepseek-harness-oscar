@@ -9,6 +9,11 @@ function count(value: number): string {
   return value.toLocaleString('en-US')
 }
 
+function signed(value: number): string {
+  if (value === 0) return '±0'
+  return `${value > 0 ? '+' : '−'}${count(Math.abs(value))}`
+}
+
 function changeLabel(
   kind: PromptChangeKind,
   t: PropsLocale<'trajectory'>['t'],
@@ -53,6 +58,7 @@ export function ContextView({
           <div className={css.list}>
             {rows.map((row) => {
               const largest = row.footprint.largestTools[0]
+              const largestGrowth = row.growth?.largestToolGrowth
               return (
                 <details className={css.request} key={row.startSeq}>
                   <summary className={css.summary}>
@@ -70,21 +76,27 @@ export function ContextView({
                     <dl className={css.metrics}>
                       <div>
                         <dt>{t('context.system')}</dt>
-                        <dd>{count(row.footprint.systemChars)} {t('context.chars')}</dd>
+                        <dd>
+                          {count(row.footprint.systemChars)} {t('context.chars')}
+                          {row.growth !== null && ` · Δ ${signed(row.growth.systemCharsDelta)}`}
+                        </dd>
                       </div>
                       <div>
                         <dt>{t('context.toolSchemas')}</dt>
                         <dd>
                           {row.footprint.toolCount} {t('context.tools')} · {' '}
                           {count(row.footprint.toolSchemaChars)} {t('context.chars')}
+                          {row.growth !== null && ` · Δ ${signed(row.growth.toolSchemaCharsDelta)}`}
                         </dd>
                       </div>
                       <div>
                         <dt>{t('context.largestTool')}</dt>
                         <dd>
-                          {largest === undefined
-                            ? '—'
-                            : `${largest.name} · ${count(largest.chars)} ${t('context.chars')}`}
+                          {largestGrowth !== undefined
+                            ? `${largestGrowth.name} · Δ +${count(largestGrowth.charsDelta)} ${t('context.chars')}`
+                            : largest === undefined
+                              ? '—'
+                              : `${largest.name} · ${count(largest.chars)} ${t('context.chars')}`}
                         </dd>
                       </div>
                       <div>
@@ -92,7 +104,9 @@ export function ContextView({
                         <dd>
                           {row.inputTokens === null
                             ? t('context.notReported')
-                            : `${count(row.inputTokens)} tok`}
+                            : `${count(row.inputTokens)} tok${row.growth?.inputTokensDelta == null
+                              ? ''
+                              : ` · Δ ${signed(row.growth.inputTokensDelta)}`}`}
                         </dd>
                       </div>
                     </dl>

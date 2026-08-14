@@ -47,9 +47,49 @@ describe('contextRequestRows', () => {
       step: 3,
       promptChange: 'tools',
       inputTokens: 125,
+      growth: null,
     })
     expect(rows[0]?.footprint.systemChars).toBe(prompt.system.length)
     expect(rows[0]?.tools[0]?.name).toBe('read')
+  })
+
+  it('derives exact adjacent request growth without attributing input-token growth', () => {
+    const nextPrompt = {
+      ...prompt,
+      system: `${prompt.system} with more context`,
+      tools: [
+        { ...prompt.tools[0], description: 'Read one file with line ranges and metadata' },
+        {
+          name: 'write',
+          description: 'Write a file',
+          parameters: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string' } } },
+        },
+      ],
+    }
+    const rows = contextRequestRows([{
+      purpose: 'assistant', startSeq: 1, turn: 1, step: 1,
+      status: 'complete', startedAt: 1, completedAt: 2, prompt,
+      usage: { inputTokens: 100, cacheReadTokens: 20 },
+    }, {
+      purpose: 'assistant', startSeq: 2, turn: 1, step: 2,
+      status: 'complete', startedAt: 3, completedAt: 4, prompt: nextPrompt,
+      usage: { inputTokens: 180, cacheReadTokens: 30 },
+    }] as unknown as RequestView[])
+
+    const growth = rows[1]?.growth
+    expect(growth).not.toBeNull()
+    expect(growth?.systemCharsDelta).toBe(nextPrompt.system.length - prompt.system.length)
+    expect(growth?.toolSchemaCharsDelta).toBe(
+      JSON.stringify(nextPrompt.tools).length - JSON.stringify(prompt.tools).length,
+    )
+    expect(growth?.envelopeCharsDelta).toBe(
+      (nextPrompt.system.length - prompt.system.length)
+      + (JSON.stringify(nextPrompt.tools).length - JSON.stringify(prompt.tools).length),
+    )
+    expect(growth?.inputTokensDelta).toBe(90)
+    expect(growth?.addedTools).toEqual(['write'])
+    expect(growth?.removedTools).toEqual([])
+    expect(growth?.largestToolGrowth?.charsDelta).toBeGreaterThan(0)
   })
 
   it('marks repeated prompt envelopes as inherited', () => {
