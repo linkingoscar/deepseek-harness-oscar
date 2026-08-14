@@ -2795,6 +2795,14 @@ export interface Config {
    * restores strictly serial dispatch. Must be a positive integer.
    */
   maxParallelSubCalls?: number
+  /**
+   * Total accepted sub-dispatch submissions per `run_code` execution. This is
+   * independent of `maxParallelSubCalls`: queued work counts immediately, so
+   * lowering parallelism cannot evade the work-amplification bound. Zero
+   * disables this admission mechanism until workload evidence sets a default.
+   * Must be a non-negative integer.
+   */
+  maxTotalSubCalls?: number
 }
 
 /** How the registry presents its tools to the model (see {@link Config.mode}). */

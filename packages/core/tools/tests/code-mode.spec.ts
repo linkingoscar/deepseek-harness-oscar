@@ -43,6 +43,7 @@ class FakeRuntime extends CodeRuntime {
 interface SetupOptions {
   mode?: Config['mode']
   maxParallelSubCalls?: number
+  maxTotalSubCalls?: number
   runtime?: false | { language?: string }
   toolOrder?: string[]
 }
@@ -50,7 +51,11 @@ interface SetupOptions {
 async function setup(options: SetupOptions = {}) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, { ...options.toolOrder ? { toolOrder: options.toolOrder } : {} })
-  await ctx.plugin(ToolRuntime, { mode: options.mode ?? 'code', ...options.maxParallelSubCalls !== undefined ? { maxParallelSubCalls: options.maxParallelSubCalls } : {} })
+  await ctx.plugin(ToolRuntime, {
+    mode: options.mode ?? 'code',
+    ...options.maxParallelSubCalls !== undefined ? { maxParallelSubCalls: options.maxParallelSubCalls } : {},
+    ...options.maxTotalSubCalls !== undefined ? { maxTotalSubCalls: options.maxTotalSubCalls } : {},
+  })
   let runtime: FakeRuntime | undefined
   if (options.runtime !== false) {
     await ctx.plugin(FakeRuntime, options.runtime ?? {})
@@ -587,6 +592,73 @@ describe('the sub-dispatch scheduler (native concurrency contract)', () => {
     if (result.isError) console.error('CAP-FAIL:', (result.content[0] as { text: string }).text)
     expect(result.isError).toBe(false)
     expect(gated.peakLive()).toBe(2)
+  })
+
+
+  it('maxTotalSubCalls caps accepted submissions independently of maxParallelSubCalls', async () => {
+    const { ctx, runtime } = await setup({ mode: 'code', maxParallelSubCalls: 1, maxTotalSubCalls: 3 })
+    const calls = registerEcho(ctx)
+    const { agent, events } = fakeAgent()
+    runtime.behavior = async (request) => {
+      const tools = request.bindings[0]!.functions
+      // All three accepted calls are submitted before any exclusive body can
+      // finish. The fourth must reject immediately instead of joining the queue.
+      const accepted = [
+        tools.echo!({ value: 'one' }),
+        tools.echo!({ value: 'two' }),
+        tools.echo!({ value: 'three' }),
+      ]
+      const denied = await tools.echo!({ value: 'four' }).then(
+        () => 'unexpectedly resolved',
+        (error: unknown) => error instanceof Error ? error.message : String(error),
+      )
+      const values = await Promise.all(accepted)
+      return { logs: [], value: `${values.map(String).join(',')}|${denied}` }
+    }
+
+    const result = await runCode(ctx, 'program', { agent })
+    expect(result.isError).toBe(false)
+    if (result.isError) throw new Error('expected run_code success')
+    expect(result.value).toMatchObject({
+      result: 'echo:one,echo:two,echo:three|run_code sub-dispatch limit exceeded (maxTotalSubCalls=3); echo not dispatched',
+    })
+    expect(calls).toEqual([{ value: 'one' }, { value: 'two' }, { value: 'three' }])
+    const starts = events
+      .filter(event => event.type === 'tool/code-dispatch-start')
+      .map(event => (event.data as { subCallId: string }).subCallId)
+    expect(starts).toEqual(['call-1:code:1', 'call-1:code:2', 'call-1:code:3'])
+  })
+
+  it('maxTotalSubCalls defaults to disabled without changing existing Code Mode behavior', async () => {
+    const { ctx, runtime } = await setup({ mode: 'code', maxParallelSubCalls: 1 })
+    const calls = registerEcho(ctx)
+    runtime.behavior = async (request) => {
+      const tools = request.bindings[0]!.functions
+      const values = await Promise.all(Array.from({ length: 12 }, (_, index) =>
+        tools.echo!({ value: String(index) })))
+      return { logs: [], value: values.length }
+    }
+    const result = await runCode(ctx, 'program')
+    expect(result.isError).toBe(false)
+    expect(calls).toHaveLength(12)
+    if (result.isError) throw new Error('expected run_code success')
+    expect(result.value).toMatchObject({ result: 12 })
+  })
+
+  it('maxTotalSubCalls direct construction rejects negative and fractional values', async () => {
+    const negativeCtx = new Context()
+    await negativeCtx.plugin(SystemPrompt, {})
+    expect(() => new ToolRuntime(negativeCtx, { mode: 'code', maxTotalSubCalls: -1 }))
+      .toThrow('maxTotalSubCalls must be a non-negative integer')
+
+    const fractionalCtx = new Context()
+    await fractionalCtx.plugin(SystemPrompt, {})
+    expect(() => new ToolRuntime(fractionalCtx, { mode: 'code', maxTotalSubCalls: 1.5 }))
+      .toThrow('maxTotalSubCalls must be a non-negative integer')
+
+    const disabledCtx = new Context()
+    await disabledCtx.plugin(SystemPrompt, {})
+    expect(() => new ToolRuntime(disabledCtx, { mode: 'code', maxTotalSubCalls: 0 })).not.toThrow()
   })
 
   it('a tool unregistered between binding enumeration and dispatch fails as unknown tool', async () => {

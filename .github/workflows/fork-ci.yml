@@ -86,5 +86,8 @@ jobs:
       - name: Run intermediate binding admission tests
         run: pnpm exec vitest run packages/code-runtime/code-runtime-worker-thread/tests/binding-budget.spec.ts
 
+      - name: Run total sub-dispatch admission tests
+        run: pnpm exec vitest run packages/core/tools/tests/code-mode.spec.ts -t maxTotalSubCalls
+
       - name: Run trajectory package tests
         run: pnpm exec vitest run packages/client/ui-trajectory/tests

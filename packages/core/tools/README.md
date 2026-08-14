@@ -10,8 +10,12 @@ Tool registry and execution pipeline. Tool plugins register their schemas and ex
 
 ```yaml
 tools:
-  mode: native   # native (default) | code | both
+  mode: native
+  maxParallelSubCalls: 10
+  maxTotalSubCalls: 0
 ```
+
+`maxParallelSubCalls` bounds only the overlapping Code Mode dispatch window; `maxTotalSubCalls` bounds accepted sub-dispatch submissions across one `run_code`, including calls that are still queued. The total cap defaults to `0` (disabled) until workload evidence supports a product threshold. These are independent controls: lowering parallelism does not reduce the amount of work a program may submit.
 
 `native` contributes visible tools as function definitions. `code` contributes the reserved `run_code` transport, the generated `tools:sdk` section, and the `tools:code-only` rule stating that only `run_code` may be called directly — which the executor then enforces, resolving a model-direct call naming any other tool to `UNKNOWN_TOOL` before policy runs; `both` contributes both forms and states no such rule, because its native calls do execute. This is the default for agents that declare none of their own — an agent preset selects its own with [`dsh-agent-tool-presentation`](../agent-tool-presentation/README.md). The reserved transport cannot be registered, shadowed, restricted, or removed, and its name is reserved whatever the configured mode, because any agent may select a code mode. Non-native modes require a `ctx.codeRuntime` whose `language` has a registered SDK renderer — TypeScript ships via [`dsh-code-runtime-worker-thread`](../../code-runtime/code-runtime-worker-thread/README.md); a Python renderer is built in and drives any runtime that reports `language: 'python'` (a first-party `dsh-code-runtime-python` backend is delivered separately). A runtime language with no renderer fails prompt assembly loudly, and a `systemPrompt.toolOrder` entry for a tool the mode does not contribute rejects prompt assembly. A `system-prompt/assemble` listener may replace the registry's contributions; its returned assembly is authoritative, so that listener owns preserving a usable Code Mode protocol.
 

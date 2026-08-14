@@ -276,6 +276,8 @@ export interface RunCodeBridgeOptions {
   peekRuntime: () => CodeRuntime | undefined
   /** The run's overlap cap for parallel-classified sub-calls (the registry passes its validated `maxParallelSubCalls`). */
   maxParallel: number
+  /** Total accepted submissions for one run; zero disables the cap (validated from `maxTotalSubCalls`). */
+  maxTotal: number
   /** Runs the contained `tools/code-dispatch-log` waterfall over one settled sub-dispatch (the registry's private invoker). */
   shapeDispatchLog: (dispatch: CodeDispatchLog) => Promise<ContentBlock[]>
 }
@@ -292,7 +294,7 @@ export interface RunCodeBridgeOptions {
  * @returns the registry-ready definition.
  */
 export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeOptions): ToolDefinition {
-  const { requireRuntime, peekRuntime, maxParallel, shapeDispatchLog } = options
+  const { requireRuntime, peekRuntime, maxParallel, maxTotal, shapeDispatchLog } = options
   const definition = defineTool({
     name: RUN_CODE_NAME,
     // The description and `code` parameter description are placeholders here:
@@ -339,6 +341,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       const onOuterAbort = (): void => { runController.abort(exec.signal.reason) }
       exec.signal.addEventListener('abort', onOuterAbort, { once: true })
 
+      // Accepted-submission count. Rejected excess calls never consume an id or queue slot.
       let dispatches = 0
       // The per-run scheduler uses the registry's staged interface and follows
       // the same concurrency rules as the native loop. It also follows the
@@ -464,6 +467,12 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       const binding = (name: string): CodeBindingFunction => async (rawArgs: unknown): Promise<JsonValue> => {
         if (runOver()) {
           throw new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} not dispatched`)
+        }
+        // Admission happens before argument snapshotting, id allocation, and
+        // queue insertion. Queued accepted work therefore counts immediately,
+        // while the rejected N+1 call cannot amplify memory through its args.
+        if (maxTotal > 0 && dispatches >= maxTotal) {
+          throw new Error(`run_code sub-dispatch limit exceeded (maxTotalSubCalls=${maxTotal}); ${name} not dispatched`)
         }
         const normalized = jsonNormalizeArgs(rawArgs)
         const n = ++dispatches
