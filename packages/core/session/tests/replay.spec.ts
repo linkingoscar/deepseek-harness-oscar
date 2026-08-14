@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { inspectReplayCapabilities, ReplayInspectionError } from '../src/replay.ts'
+import {
+  inspectReplayCapabilities,
+  ReplayInspectionError,
+  ReplaySimulationError,
+  simulateReplayRequest,
+} from '../src/replay.ts'
+import type { ReplaySimulationExecutor } from '../src/replay.ts'
 
 const CONFIG = { provider: 'mock', model: 'm' }
 
@@ -35,7 +41,7 @@ describe('inspectReplayCapabilities', () => {
         simulated: {
           availability: 'unavailable',
           effects: 'none',
-          blockers: ['SIMULATED_EXECUTOR_NOT_IMPLEMENTED'],
+          blockers: ['NO_REQUEST_HEADER', 'SIMULATED_EXECUTOR_REQUIRED'],
         },
         'live-fork': {
           availability: 'conditional',
@@ -57,7 +63,7 @@ describe('inspectReplayCapabilities', () => {
     expect(inspection).not.toHaveProperty('latestRequestHeaderSeq')
   })
 
-  it('reports a completed request prefix as reconstructable and fork-compatible without upgrading live fork to unconditional', () => {
+  it('reports a completed request prefix as reconstructable and simulation-ready when an executor is supplied', () => {
     const inspection = inspectReplayCapabilities(completedRequest('one'))
 
     expect(inspection.boundary).toBe(2)
@@ -67,6 +73,9 @@ describe('inspectReplayCapabilities', () => {
     expect(inspection.requestHeader).toEqual({ config: CONFIG, system: 'one' })
     expect(inspection.modes['request-reconstruction']).toEqual({
       mode: 'request-reconstruction', availability: 'available', effects: 'none', blockers: [],
+    })
+    expect(inspection.modes.simulated).toEqual({
+      mode: 'simulated', availability: 'conditional', effects: 'none', blockers: ['SIMULATED_EXECUTOR_REQUIRED'],
     })
     expect(inspection.modes['live-fork']).toEqual({
       mode: 'live-fork', availability: 'conditional', effects: 'live-if-executed', blockers: ['LIVE_SOURCE_REQUIRED'],
@@ -122,5 +131,71 @@ describe('inspectReplayCapabilities', () => {
     const broken = structuredClone(events)
     broken[1]!.seq = 9
     expect(() => inspectReplayCapabilities(broken, 2)).toThrow(/not contiguous at index 1/)
+  })
+})
+
+describe('simulateReplayRequest', () => {
+  it('supplies the exact reconstructed request to an effect-free executor and returns its opaque result', async () => {
+    const execute = vi.fn((request) => ({
+      system: request.header.system,
+      messageCount: request.messages.length,
+    }))
+    const executor: ReplaySimulationExecutor<{ system: string | undefined; messageCount: number }> = {
+      id: 'fixture-simulator',
+      effects: 'none',
+      execute,
+    }
+
+    const result = await simulateReplayRequest(completedRequest('historical'), executor)
+
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(execute.mock.calls[0]?.[0]).toBe(result.request)
+    expect(result).toMatchObject({
+      mode: 'simulated',
+      executorId: 'fixture-simulator',
+      request: { requestHeaderSeq: 1, header: { config: CONFIG, system: 'historical' }, messages: [] },
+      result: { system: 'historical', messageCount: 0 },
+    })
+    expect(Object.isFrozen(result)).toBe(true)
+  })
+
+  it('can target an earlier request without leaking a later request into the executor input', async () => {
+    const events: SessionEvent[] = [
+      ...completedRequest('first'),
+      { type: 'turn/start', seq: 3, time: 13, data: { turn: 2 } },
+      {
+        type: 'request/header',
+        seq: 4,
+        time: 14,
+        data: { header: { config: { provider: 'mock', model: 'later' }, system: 'second' }, reason: 'change' },
+      },
+      { type: 'turn/end', seq: 5, time: 15, data: { turn: 2, reason: { kind: 'completed' } } },
+    ]
+    const executor: ReplaySimulationExecutor<string | undefined> = {
+      id: 'history-probe',
+      effects: 'none',
+      execute: request => request.header.system,
+    }
+
+    const replay = await simulateReplayRequest(events, executor, 1)
+    expect(replay.request.requestHeaderSeq).toBe(1)
+    expect(replay.result).toBe('first')
+  })
+
+  it('rejects missing request evidence and executors that do not uphold the effect-free contract', async () => {
+    const executor: ReplaySimulationExecutor<string> = {
+      id: 'fixture-simulator',
+      effects: 'none',
+      execute: () => 'unused',
+    }
+    await expect(simulateReplayRequest([], executor)).rejects.toThrow(ReplaySimulationError)
+    await expect(simulateReplayRequest([], executor)).rejects.toThrow(/requires a reconstructable request\/header/)
+
+    const unsafe = {
+      id: 'live-executor',
+      effects: 'live-if-executed',
+      execute: () => 'unsafe',
+    } as unknown as ReplaySimulationExecutor<string>
+    await expect(simulateReplayRequest(completedRequest(), unsafe)).rejects.toThrow(/effects: "none"/)
   })
 })
