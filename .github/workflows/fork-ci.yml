@@ -83,6 +83,11 @@ jobs:
       - name: Run execution accounting tests
         run: pnpm exec vitest run packages/core/tools/tests/execution-accounting.spec.ts
 
+      - name: Run Code Mode delivery byte evidence tests
+        run: |
+          pnpm exec vitest run packages/core/tools/tests/json-bytes.spec.ts
+          pnpm exec vitest run packages/core/tools/tests/code-mode.spec.ts -t "delivery byte evidence"
+
       - name: Run intermediate binding admission tests
         run: pnpm exec vitest run packages/code-runtime/code-runtime-worker-thread/tests/binding-budget.spec.ts
 

@@ -35,6 +35,7 @@ function settle(
   n: number,
   name: string,
   isError = false,
+  deliveredValueBytes?: number,
 ): CodeEvent {
   const parentCallId = CallId(parent)
   return {
@@ -49,6 +50,7 @@ function settle(
       arguments: {},
       isError,
       content: [],
+      ...deliveredValueBytes === undefined ? {} : { deliveredValueBytes },
     },
   }
 }
@@ -70,6 +72,8 @@ describe('Code Mode execution accounting', () => {
       started: 3,
       settled: 3,
       failed: 0,
+      deliveredValueBytes: 0,
+      unmeasuredDeliveredValues: 3,
       peakInFlight: 2,
       unsettled: 0,
       orphanSettles: 0,
@@ -77,8 +81,8 @@ describe('Code Mode execution accounting', () => {
       lastSeq: 6,
       dispatchWindowMs: 25,
       byTool: {
-        read_file: { started: 2, settled: 2, failed: 0 },
-        grep: { started: 1, settled: 1, failed: 0 },
+        read_file: { started: 2, settled: 2, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 2 },
+        grep: { started: 1, settled: 1, failed: 0, deliveredValueBytes: 0, unmeasuredDeliveredValues: 1 },
       },
     }])
   })
@@ -107,6 +111,28 @@ describe('Code Mode execution accounting', () => {
       failed: 0,
       peakInFlight: 1,
       byTool: { read_file: { started: 1, settled: 1, failed: 0 } },
+    })
+  })
+
+  it('sums exact delivery bytes while preserving unknown legacy successes', () => {
+    const accounting = deriveCodeRunExecutionAccounting([
+      start(1, 100, 'parent', 1, 'read_file'),
+      settle(2, 101, 'parent', 1, 'read_file', false, 5),
+      start(3, 102, 'parent', 2, 'read_file'),
+      settle(4, 103, 'parent', 2, 'read_file'),
+      start(5, 104, 'parent', 3, 'grep'),
+      settle(6, 105, 'parent', 3, 'grep', false, 7),
+      start(7, 106, 'parent', 4, 'grep'),
+      settle(8, 107, 'parent', 4, 'grep', true),
+    ])
+
+    expect(accounting[0]).toMatchObject({
+      deliveredValueBytes: 12,
+      unmeasuredDeliveredValues: 1,
+      byTool: {
+        read_file: { deliveredValueBytes: 5, unmeasuredDeliveredValues: 1 },
+        grep: { deliveredValueBytes: 7, unmeasuredDeliveredValues: 0 },
+      },
     })
   })
 

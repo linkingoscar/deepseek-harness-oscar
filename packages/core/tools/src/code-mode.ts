@@ -11,6 +11,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { CodeBindingFunction, CodeRunResult, CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { jsonValueBytes } from './json-bytes.ts'
 import { defineTool, parameterSchemaSpecToJsonSchema } from './schema.ts'
 import { TOOL_RUNTIME_SCHEDULER } from './index.ts'
 import type { CodeDispatchLog, ToolDefinition, ToolExecutionResult, ToolRuntime, ToolRunContext } from './index.ts'
@@ -516,6 +517,11 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
                 // the log stays detached.
                 content: result.content,
               })
+              // Measure after the asynchronous log-shaping boundary: the
+              // binding promise was already resolved above, so evidence
+              // accounting never becomes a new delivery gate. The canonical
+              // success value is deep-frozen by ToolRuntime.
+              const deliveredValueBytes = result.isError ? undefined : jsonValueBytes(result.value)
               agent.session.append('tool/code-dispatch', {
                 rootCallId: exec.rootCallId,
                 parentCallId: exec.callId,
@@ -527,6 +533,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
                 arguments: normalized.logged,
                 isError: result.isError,
                 content: logged,
+                ...deliveredValueBytes === undefined ? {} : { deliveredValueBytes },
               })
             })().finally(() => { logWork.delete(task) })
             logWork.add(task)

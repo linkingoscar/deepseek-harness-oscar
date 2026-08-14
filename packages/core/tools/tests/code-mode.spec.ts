@@ -1867,3 +1867,48 @@ describe('per-agent presentation', () => {
       .rejects.toThrow('mode "both" requires a code runtime')
   })
 })
+
+
+describe('Code Mode delivery byte evidence', () => {
+  it('records exact successful canonical JSON bytes and omits delivery bytes for failures', async () => {
+    const { ctx, runtime } = await setup({ mode: 'code' })
+    ctx.tools.register(defineTool({
+      name: 'unicode_value',
+      description: 'Return one Unicode value.',
+      parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => [{ type: 'text', text: value }],
+      },
+      execute: () => Promise.resolve('€'),
+    }))
+    ctx.tools.register(defineTool({
+      name: 'fails',
+      description: 'Fail on request.',
+      parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => [{ type: 'text', text: value }],
+      },
+      execute: async () => { throw new Error('nope') },
+    }))
+    const { agent, events } = fakeAgent()
+    runtime.behavior = async (request) => {
+      const tools = request.bindings[0]!.functions
+      const value = await tools.unicode_value!({})
+      try { await tools.fails!({}) } catch {}
+      return { logs: [], value }
+    }
+
+    const result = await runCode(ctx, 'program', { agent })
+    expect(result.isError).toBe(false)
+    const settles = events
+      .filter(event => event.type === 'tool/code-dispatch')
+      .map(event => event.data as Record<string, unknown>)
+    const success = settles.find(event => event.name === 'unicode_value')
+    const failure = settles.find(event => event.name === 'fails')
+    expect(success).toMatchObject({ name: 'unicode_value', isError: false, deliveredValueBytes: 5 })
+    expect(failure).toMatchObject({ name: 'fails', isError: true })
+    expect(failure).not.toHaveProperty('deliveredValueBytes')
+  })
+})

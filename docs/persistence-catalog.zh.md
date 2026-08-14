@@ -753,7 +753,9 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  * with the same JSON-normalized `arguments`, and the sub-call's complete
  * model-facing outcome in `tool/result`'s own vocabulary
  * (`content` + `isError`), so UIs render a sub-call through the exact
- * code path that renders a native call. Every started sub-call settles
+ * code path that renders a native call. A successful settle additionally
+ * records the exact serialized JSON bytes delivered to the program; older
+ * events may lack that evidence. Every started sub-call settles
  * with exactly one of these (abort included: the aborted pipeline result
  * is an `isError` outcome).
  * Log-only: `deriveMessages()` ignores it, so sub-calls never re-enter
