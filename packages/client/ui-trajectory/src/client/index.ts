@@ -17,7 +17,7 @@ import { registerTrajectoryMessageDefinitions } from './trajectory-message-defin
 import { registerTrajectoryRequestHeaderDefinition } from './trajectory-request-header-definition.ts'
 import { registerTrajectoryConversationView } from './trajectory-snapshot-builder.ts'
 import { registerTrajectoryToolDefinition } from './trajectory-tool-definition.ts'
-import { TrajectoryDevtoolsView } from './TrajectoryDevtoolsView.tsx'
+import { TrajectoryDevtoolsView as TrajectoryView } from './TrajectoryDevtoolsView.tsx'
 import type { TrajectoryViewInjected } from './TrajectoryView.tsx'
 
 /** Required services: the conversation slot, registries, ordinary Session paging, and the locale service. */
@@ -63,5 +63,5 @@ export function apply(ctx: Context): void {
         setActualDuration: (value) => { duration.set(value) },
       }
     },
-  }, TrajectoryDevtoolsView))
+  }, TrajectoryView))
 }
