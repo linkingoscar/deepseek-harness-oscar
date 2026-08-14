@@ -133,6 +133,8 @@ The first Code Mode questions to answer are empirical:
 
 Do not call Code Mode an efficiency win solely because `tool_calls` fell. A successful result is stronger when task success holds or improves and the reduction survives the leaf-call, token, and latency views.
 
+For a checked-in diagnostic workload, materialize the [Code Mode micro-eval suite](benchmarks/code-mode/README.md). It creates disposable deterministic fixtures for fan-out reads, search-then-read aggregation, multi-file edits, and dependency traversal, then emits task JSONL that runs through the same `compare-modes` path.
+
 ## Benchmark discipline
 
 For changes intended to improve agent quality, keep the following together in the PR:
