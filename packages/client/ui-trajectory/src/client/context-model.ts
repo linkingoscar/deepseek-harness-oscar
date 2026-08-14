@@ -9,6 +9,7 @@ import {
 
 type AssistantRequestView = Extract<RequestView, { purpose: 'assistant' }>
 
+/** How the request prompt envelope changed at this request boundary. */
 export type PromptChangeKind =
   | 'initial'
   | 'system'
@@ -16,12 +17,14 @@ export type PromptChangeKind =
   | 'system-and-tools'
   | 'inherited'
 
+/** One model-visible tool summarized for the Context Debugger. */
 export interface ContextToolRow {
   name: string
   description: string
   chars: number
 }
 
+/** One assistant request projected into the bounded Context Debugger read model. */
 export interface ContextRequestRow {
   requestNumber: number
   startSeq: number
@@ -56,6 +59,8 @@ function requestInputTokens(request: AssistantRequestView): number | null {
  * Derive bounded Context Debugger rows from the same request-inspection window
  * Trajectory already owns. Request numbering includes every inspected request
  * in the loaded window, including compaction requests.
+ * @param requests - bounded request-inspection records from Trajectory.
+ * @returns assistant-request rows in request-sequence order.
  */
 export function contextRequestRows(requests: readonly RequestView[]): readonly ContextRequestRow[] {
   const ordered = [...requests].sort((left, right) => left.startSeq - right.startSeq)
