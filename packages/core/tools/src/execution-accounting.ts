@@ -116,6 +116,9 @@ function getRun(
  * Only durable Code Mode dispatch events are consumed. Calls submitted but
  * abandoned before scheduler start intentionally do not appear: there is no
  * durable evidence for them today, so this projection does not invent a count.
+ *
+ * @param events - Ordered session events or a contiguous ordered slice to inspect.
+ * @returns One accounting record for each parent `run_code` call represented by the supplied durable events.
  */
 export function deriveCodeRunExecutionAccounting(
   events: readonly SessionEvent[],
