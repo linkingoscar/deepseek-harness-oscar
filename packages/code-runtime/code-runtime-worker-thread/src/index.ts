@@ -46,6 +46,11 @@ export interface Config {
    * fixed result-envelope syntax is excluded.
    */
   maxOutputBytes?: number
+  /**
+   * Hard cap for each serialized binding argument and binding resolution. Zero disables
+   * this admission budget so the mechanism can ship before benchmark evidence sets a default.
+   */
+  maxBindingValueBytes?: number
   /** The worker's max old-generation heap in MiB (`resourceLimits`); overflow kills the worker, surfacing as kind `'worker-exit'`. */
   maxOldGenerationSizeMb?: number
 }
@@ -164,7 +169,6 @@ function parseWorkerMessage(raw: unknown): WorkerToHost | undefined {
   }
 }
 
-
 /** One run's combined outer-output ledger; binding values never enter it. */
 class OutputLedger {
   private bytes = 2 // JSON serialization of the empty logs array: []
@@ -240,6 +244,7 @@ export class WorkerThreadCodeRuntime extends CodeRuntime {
     computeMs: z.number().default(60_000),
     maxWallMs: z.number().default(600_000),
     maxOutputBytes: z.number().default(67_108_864),
+    maxBindingValueBytes: z.number().default(0),
     maxOldGenerationSizeMb: z.number().default(512),
   })
 
@@ -256,10 +261,14 @@ export class WorkerThreadCodeRuntime extends CodeRuntime {
     // semantic check the schema's plain number type does not carry.
     this.config = config as ResolvedConfig
     for (const [key, value] of Object.entries(this.config)) {
+      if (key === 'maxBindingValueBytes') continue
       if (!(Number.isFinite(value) && value > 0)) throw new Error(`dsh-code-runtime-worker-thread: config.${key} must be a positive number, got ${String(value)}`)
     }
     if (!Number.isSafeInteger(this.config.maxOutputBytes) || this.config.maxOutputBytes < MIN_OUTPUT_BYTES) {
       throw new Error(`dsh-code-runtime-worker-thread: config.maxOutputBytes must be a safe integer of at least ${MIN_OUTPUT_BYTES}, got ${String(this.config.maxOutputBytes)}`)
+    }
+    if (!Number.isSafeInteger(this.config.maxBindingValueBytes) || this.config.maxBindingValueBytes < 0) {
+      throw new Error(`dsh-code-runtime-worker-thread: config.maxBindingValueBytes must be a non-negative safe integer, got ${String(this.config.maxBindingValueBytes)}`)
     }
     // maxWallMs reaches setTimeout, which clamps any delay above
     // MAX_TIMER_DELAY_MS to 1 ms; the positivity check above accepts such a
@@ -374,6 +383,7 @@ export class WorkerThreadCodeRuntime extends CodeRuntime {
         ...namespace.errorClass ? { errorClass: namespace.errorClass } : {},
       })),
       maxOutputBytes: this.config.maxOutputBytes,
+      maxBindingValueBytes: this.config.maxBindingValueBytes,
     }
     const worker = new Worker(WORKER_PATH, {
       workerData: bootData,
@@ -486,6 +496,10 @@ export class WorkerThreadCodeRuntime extends CodeRuntime {
           reply({ type: 'reply', id: message.id, ok: false, message: 'binding arguments must be lossless JSON' })
           return
         }
+        if (this.config.maxBindingValueBytes > 0 && jsonValueBytesUpTo(args, this.config.maxBindingValueBytes) === undefined) {
+          reply({ type: 'reply', id: message.id, ok: false, message: `binding arguments exceeded ${this.config.maxBindingValueBytes} bytes` })
+          return
+        }
         void (async () => {
           try {
             const resolved = await fn(args)
@@ -497,6 +511,8 @@ export class WorkerThreadCodeRuntime extends CodeRuntime {
             }
             if (value === undefined) {
               reply({ type: 'reply', id: message.id, ok: false, message: 'binding resolution must be lossless JSON' })
+            } else if (this.config.maxBindingValueBytes > 0 && jsonValueBytesUpTo(value, this.config.maxBindingValueBytes) === undefined) {
+              reply({ type: 'reply', id: message.id, ok: false, message: `binding resolution exceeded ${this.config.maxBindingValueBytes} bytes` })
             } else {
               reply({ type: 'reply', id: message.id, ok: true, value: encodeWorkerJson(value) })
             }

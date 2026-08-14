@@ -458,6 +458,11 @@ export interface Config {
    * fixed result-envelope syntax is excluded.
    */
   maxOutputBytes?: number
+  /**
+   * Hard cap for each serialized binding argument and binding resolution. Zero disables
+   * this admission budget so the mechanism can ship before benchmark evidence sets a default.
+   */
+  maxBindingValueBytes?: number
   /** The worker's max old-generation heap in MiB (`resourceLimits`); overflow kills the worker, surfacing as kind `'worker-exit'`. */
   maxOldGenerationSizeMb?: number
 }
