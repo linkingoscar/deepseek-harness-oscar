@@ -20,7 +20,7 @@ export interface WorkerBootData {
   /** Hard cap for the combined serialized outer logs plus completion value or failure diagnostic. */
   maxOutputBytes: number
   /** Hard cap for one serialized binding argument or resolution; absent/zero disables this admission budget. */
-  maxBindingValueBytes?: number
+  maxBindingValueBytes: number
 }
 
 /** Worker → host: one bridged binding call. */
