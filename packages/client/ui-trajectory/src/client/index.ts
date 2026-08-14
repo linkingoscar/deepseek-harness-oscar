@@ -1,6 +1,6 @@
 /**
- * Browser trajectory plugin contributing one entry to the conversation view
- * slot without defining a service.
+ * Browser trajectory plugin contributing one DevTools entry to the conversation
+ * view slot without defining a service.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
@@ -17,14 +17,16 @@ import { registerTrajectoryMessageDefinitions } from './trajectory-message-defin
 import { registerTrajectoryRequestHeaderDefinition } from './trajectory-request-header-definition.ts'
 import { registerTrajectoryConversationView } from './trajectory-snapshot-builder.ts'
 import { registerTrajectoryToolDefinition } from './trajectory-tool-definition.ts'
-import { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.tsx'
+import { TrajectoryDevtoolsView as TrajectoryView } from './TrajectoryDevtoolsView.tsx'
+import type { TrajectoryViewInjected } from './TrajectoryView.tsx'
 
 /** Required services: the conversation slot, registries, ordinary Session paging, and the locale service. */
 export const inject = ['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale']
 
 /**
- * Client plugin body: register the trajectory view tab. The registration
- * rides the slot service's effect wrapper, so plugin unload removes the tab.
+ * Client plugin body: register one stable Trajectory tab whose internal modes
+ * cover the event ledger and Context Debugger. The registration rides the slot
+ * service's effect wrapper, so plugin unload removes the tab.
  * @param ctx - client root context.
  */
 export function apply(ctx: Context): void {
