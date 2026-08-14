@@ -298,14 +298,17 @@ export function wireReplies(port: BootstrapPort, pending: Map<number, PendingCal
   })
 }
 
+/** Namespace declarations plus the optional standalone-test binding budget. */
+type NamespaceData = Pick<WorkerBootData, 'namespaces'> & Partial<Pick<WorkerBootData, 'maxBindingValueBytes'>>
+
 /**
  * Build the binding namespace objects the program sees: one null-prototype global per
  * namespace, each declared name an own enumerable async function that bridges over the port
  * (`__proto__`/`constructor`/`toString` are ordinary keys, never prototype collisions).
- * Lossy arguments reject before posting; clone failures and host failure
+ * Lossy or oversized arguments reject before posting; clone failures and host failure
  * replies reject only the corresponding call.
  *
- * @param data - the boot payload's namespace declarations (globals + names).
+ * @param data - the boot payload's namespace declarations (globals + names) and binding budget.
  * @param port - the port binding calls are posted to.
  * @param pending - the id-keyed map each posted call parks its handles in.
  * @param nextId - the shared mutable id counter (worker-issued correlation ids).
@@ -313,12 +316,13 @@ export function wireReplies(port: BootstrapPort, pending: Map<number, PendingCal
  * @returns one namespace object per declaration, in declaration order.
  */
 export function makeNamespaces(
-  data: Pick<WorkerBootData, 'namespaces'>,
+  data: NamespaceData,
   port: BootstrapPort,
   pending: Map<number, PendingCall>,
   nextId: { value: number },
   errorClasses: Map<string, BindingErrorConstructor> = makeBindingErrorClasses(data),
 ): Record<string, unknown>[] {
+  const maxBindingValueBytes = data.maxBindingValueBytes ?? 0
   return data.namespaces.map(({ global, names }) => {
     const errorClass = errorClasses.get(global)
     const namespace = Object.create(null) as Record<string, unknown>
@@ -334,6 +338,9 @@ export function makeNamespaces(
           }
           if (detached === undefined) {
             return Promise.reject(bindingFailure(errorClass, name, 'binding arguments must be lossless JSON'))
+          }
+          if (maxBindingValueBytes > 0 && jsonValueBytesUpTo(detached, maxBindingValueBytes) === undefined) {
+            return Promise.reject(bindingFailure(errorClass, name, `binding arguments exceeded ${maxBindingValueBytes} bytes`))
           }
           return new Promise((resolve, reject) => {
             const id = nextId.value++
