@@ -2,10 +2,11 @@ import { useState } from 'react'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { ContextView } from './ContextView.tsx'
+import { ExecutionView } from './ExecutionView.tsx'
 import { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.tsx'
 import css from './TrajectoryDevtoolsView.module.css'
 
-type Mode = 'trajectory' | 'context'
+type Mode = 'trajectory' | 'context' | 'execution'
 type Props = ConvViewProps & InjectFace<TrajectoryViewInjected> & PropsLocale<'trajectory'>
 
 /** Keep the existing Trajectory tab stable while adding a sibling debugger mode. */
@@ -30,11 +31,21 @@ export function TrajectoryDevtoolsView(props: Props) {
         >
           {props.t('view.context')}
         </button>
+        <button
+          type="button"
+          aria-pressed={mode === 'execution'}
+          className={mode === 'execution' ? css.active : undefined}
+          onClick={() => { setMode('execution') }}
+        >
+          {props.t('view.execution')}
+        </button>
       </div>
       <div className={css.body}>
         {mode === 'trajectory'
           ? <TrajectoryView {...props} />
-          : <ContextView {...props} />}
+          : mode === 'context'
+            ? <ContextView {...props} />
+            : <ExecutionView {...props} />}
       </div>
     </div>
   )

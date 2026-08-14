@@ -7,6 +7,7 @@ export const NS = 'trajectory'
 export type TrajectoryKey =
   | 'view.trajectory'
   | 'view.context'
+  | 'view.execution'
   | 'toolbar.aria'
   | 'toolbar.duration'
   | 'toolbar.useActualDuration'
@@ -44,6 +45,18 @@ export type TrajectoryKey =
   | 'context.emptySystem'
   | 'context.toolCatalog'
   | 'context.noTools'
+  | 'execution.title'
+  | 'execution.subtitle'
+  | 'execution.runs'
+  | 'execution.empty'
+  | 'execution.run'
+  | 'execution.dispatches'
+  | 'execution.failed'
+  | 'execution.peak'
+  | 'execution.delivered'
+  | 'execution.unknown'
+  | 'execution.incomplete'
+  | 'execution.byTool'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -56,6 +69,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh: Record<TrajectoryKey, string> = {
   'view.trajectory': '轨迹',
   'view.context': '上下文',
+  'view.execution': '执行',
   'toolbar.aria': '轨迹工具栏',
   'toolbar.duration': 'Duration',
   'toolbar.useActualDuration': 'Use actual duration',
@@ -93,12 +107,25 @@ export const zh: Record<TrajectoryKey, string> = {
   'context.emptySystem': '此请求没有 system prompt。',
   'context.toolCatalog': '工具目录',
   'context.noTools': '此请求没有模型可见工具。',
+  'execution.title': '执行调试器',
+  'execution.subtitle': '从持久化 Code Mode dispatch 事件重建执行事实；缺失的旧版字节证据保持为未知。',
+  'execution.runs': '次运行',
+  'execution.empty': '当前已加载窗口中没有 Code Mode 执行证据。',
+  'execution.run': 'run_code',
+  'execution.dispatches': 'Settled / Started',
+  'execution.failed': '失败',
+  'execution.peak': '峰值并发',
+  'execution.delivered': '交付字节',
+  'execution.unknown': '未知字节结果',
+  'execution.incomplete': 'Unsettled / Orphan',
+  'execution.byTool': '按工具',
 }
 
 /** English dictionary. */
 export const en: Record<TrajectoryKey, string> = {
   'view.trajectory': 'Trajectory',
   'view.context': 'Context',
+  'view.execution': 'Execution',
   'toolbar.aria': 'Trajectory toolbar',
   'toolbar.duration': 'Duration',
   'toolbar.useActualDuration': 'Use actual duration',
@@ -136,4 +163,16 @@ export const en: Record<TrajectoryKey, string> = {
   'context.emptySystem': 'No system prompt in this request.',
   'context.toolCatalog': 'Tool catalog',
   'context.noTools': 'No model-visible tools in this request.',
+  'execution.title': 'Execution debugger',
+  'execution.subtitle': 'Reconstruct Code Mode execution facts from durable dispatch events; missing legacy byte evidence stays unknown.',
+  'execution.runs': 'runs',
+  'execution.empty': 'No Code Mode execution evidence is present in the currently loaded window.',
+  'execution.run': 'run_code',
+  'execution.dispatches': 'Settled / Started',
+  'execution.failed': 'Failed',
+  'execution.peak': 'Peak in flight',
+  'execution.delivered': 'Delivered bytes',
+  'execution.unknown': 'Unknown-byte values',
+  'execution.incomplete': 'Unsettled / Orphan',
+  'execution.byTool': 'By tool',
 }

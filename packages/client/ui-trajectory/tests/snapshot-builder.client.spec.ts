@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RequestView } from '@deepseek-ai/dsh-client-runtime/client'
+import type { CodeRunExecutionAccounting } from '@deepseek-ai/dsh-tools/execution-accounting'
 import type {
   TrajectoryContribution, TrajectoryConversationViewNode, TrajectoryRequestHeaderState,
 } from '../src/client/trajectory-contract.ts'
@@ -234,4 +235,24 @@ describe('TrajectorySnapshotBuilder', () => {
     expect(builder.apply({ upserts: [middle] }).requests.map(request => request.startSeq))
       .toEqual([1, 3, 5])
   })
+})
+
+
+it('carries Code Mode execution accounting from tool contributions into the snapshot', () => {
+  const accounting = {
+    rootCallId: 'root' as CodeRunExecutionAccounting['rootCallId'],
+    parentCallId: 'run' as CodeRunExecutionAccounting['parentCallId'],
+    started: 2, settled: 2, failed: 1,
+    deliveredValueBytes: 5, unmeasuredDeliveredValues: 1, peakInFlight: 2,
+    unsettled: 0, orphanSettles: 0, firstSeq: 10, lastSeq: 13, dispatchWindowMs: 3,
+    byTool: { read: { started: 2, settled: 2, failed: 1, deliveredValueBytes: 5, unmeasuredDeliveredValues: 1 } },
+  } satisfies CodeRunExecutionAccounting
+  const root = {
+    kind: 'tool-result', seq: 14, time: 14, callId: 'run', call: { name: 'run_code', argsRaw: '{}' },
+    callTime: 9, content: [], isError: false, callView: null, resultView: null, subCalls: [],
+  } as const
+  const snapshot = new TrajectorySnapshotBuilder().replace({
+    nodes: [contribution('tool', 9, { kind: 'tool', root, executionAccounting: [accounting] })],
+  })
+  expect(snapshot.executionAccounting).toEqual([accounting])
 })
