@@ -332,6 +332,7 @@ describe('runWorkerMain', () => {
     const port = new FakePort()
     await runWorkerMain(port, {
       maxOutputBytes: 4,
+      maxBindingValueBytes: 0,
       code: 'console.log("12345"); return null',
       namespaces: [],
     }, fakeStreams())
@@ -367,6 +368,7 @@ describe('runWorkerMain', () => {
     const rawPort = new FakePort()
     await runWorkerMain(rawPort, {
       maxOutputBytes: 64,
+      maxBindingValueBytes: 0,
       code: 'throw "x".repeat(1_000_000)',
       namespaces: [],
     }, fakeStreams())
@@ -378,6 +380,7 @@ describe('runWorkerMain', () => {
     const stackPort = new FakePort()
     await runWorkerMain(stackPort, {
       maxOutputBytes: 64,
+      maxBindingValueBytes: 0,
       code: 'throw new Error("x".repeat(1_000_000))',
       namespaces: [],
     }, fakeStreams())
