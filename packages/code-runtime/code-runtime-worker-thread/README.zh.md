@@ -13,7 +13,7 @@
     computeMs: 60000              # busy-time budget (measured event-loop active time)
     maxWallMs: 600000             # wall-clock ceiling; never pauses for anything
     maxOutputBytes: 67108864      # combined serialized outer-output cap (64 MiB)
-    maxBindingValueBytes: 0       # 单个绑定参数/resolve 值的 JSON 字节上限；0 表示禁用
+    maxBindingValueBytes: 0       # per binding argument/resolution JSON-byte cap; 0 disables it
     maxOldGenerationSizeMb: 512   # worker heap cap (resourceLimits)
 ```
 
