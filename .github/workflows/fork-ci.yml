@@ -80,5 +80,8 @@ jobs:
             python benchmarks/code-mode/suite_test.py
           fi
 
+      - name: Run execution accounting tests
+        run: pnpm exec vitest run packages/core/tools/tests/execution-accounting.spec.ts
+
       - name: Run trajectory package tests
         run: pnpm exec vitest run packages/client/ui-trajectory/tests
