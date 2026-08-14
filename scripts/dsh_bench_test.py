@@ -135,9 +135,22 @@ class ParserTests(unittest.TestCase):
             "--output-dir",
             ".bench/code-mode",
         ])
-        self.assertEqual(parsed.native_cordis, MODULE.DEFAULT_NATIVE_CORDIS)
-        self.assertEqual(parsed.code_cordis, MODULE.DEFAULT_CODE_CORDIS)
+        self.assertEqual(parsed.toolset, "fs")
+        self.assertIsNone(parsed.native_cordis)
+        self.assertIsNone(parsed.code_cordis)
+        self.assertEqual(MODULE.MODE_CORDIS_PAIRS["fs"], (MODULE.DEFAULT_FS_NATIVE_CORDIS, MODULE.DEFAULT_FS_CODE_CORDIS))
         self.assertEqual(parsed.repeat, 1)
+
+    def test_compare_modes_can_select_shell_pair(self) -> None:
+        parsed = MODULE.parser().parse_args([
+            "compare-modes",
+            "tasks.jsonl",
+            "--output-dir",
+            ".bench/code-mode",
+            "--toolset",
+            "shell",
+        ])
+        self.assertEqual(parsed.toolset, "shell")
 
 
 if __name__ == "__main__":

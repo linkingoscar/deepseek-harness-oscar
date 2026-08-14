@@ -90,21 +90,29 @@ The comparison reports baseline/candidate summaries, candidate-minus-baseline de
 
 ## Native vs Code Mode
 
-The repository includes two deliberately narrow JSON-RPC compositions with the same model-facing capabilities:
+The repository includes two checked-in native/Code Mode pairs. The default `fs` pair is intentionally structured-tool-only:
 
-- `examples/jsonrpc-agent/minimal.cordis.yml`: native function calling.
-- `examples/jsonrpc-agent/minimal-code.cordis.yml`: TypeScript Code Mode using `@deepseek-ai/dsh-code-runtime-worker-thread`.
+- `examples/jsonrpc-agent/minimal-fs.cordis.yml`: native `read`/`write`/`edit`/`glob`/`grep`.
+- `examples/jsonrpc-agent/minimal-fs-code.cordis.yml`: the same capabilities through TypeScript Code Mode.
 
-The Code Mode composition keeps the same persistent Bash and string-replace editor tools and the same danger-full-access benchmark posture. Its meaningful experimental differences are the tool presentation (`mode: code`) and the worker-thread execution transport needed by `run_code`.
+This pair omits Bash on purpose. An arbitrary shell is already a programmable batching surface (`grep | awk | xargs`, Python one-liners, and so on), so a shell-rich benchmark can hide the difference Code Mode is meant to create. The `fs` pair instead tests whether moving structured tool orchestration into the execution plane reduces model round trips and context growth.
+
+For coding tasks that specifically need a persistent shell, the `shell` pair remains available:
+
+- `examples/jsonrpc-agent/minimal.cordis.yml`: native persistent Bash + string-replace editor.
+- `examples/jsonrpc-agent/minimal-code.cordis.yml`: the same capabilities through Code Mode.
 
 Run the same task set through both compositions with one command:
 
 ```sh
 python scripts/dsh_bench.py compare-modes benchmarks/tasks.jsonl \
   --output-dir .bench/code-mode \
+  --toolset fs \
   --model deepseek-v4-flash \
   --repeat 3
 ```
+
+`--toolset fs` is the default; pass `--toolset shell` for the persistent-Bash pair. Either side can also be overridden with `--native-cordis` / `--code-cordis`.
 
 This writes:
 

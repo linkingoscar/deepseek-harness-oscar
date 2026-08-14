@@ -15,8 +15,14 @@ from typing import Any, Iterable
 
 JsonObject = dict[str, Any]
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_NATIVE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal.cordis.yml"
-DEFAULT_CODE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal-code.cordis.yml"
+DEFAULT_SHELL_NATIVE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal.cordis.yml"
+DEFAULT_SHELL_CODE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal-code.cordis.yml"
+DEFAULT_FS_NATIVE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal-fs.cordis.yml"
+DEFAULT_FS_CODE_CORDIS = REPO_ROOT / "examples/jsonrpc-agent/minimal-fs-code.cordis.yml"
+MODE_CORDIS_PAIRS = {
+    "fs": (DEFAULT_FS_NATIVE_CORDIS, DEFAULT_FS_CODE_CORDIS),
+    "shell": (DEFAULT_SHELL_NATIVE_CORDIS, DEFAULT_SHELL_CODE_CORDIS),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,6 +444,9 @@ def command_compare_modes(args: argparse.Namespace) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     run_id = args.run_id or uuid.uuid4().hex[:12]
     sessions_root = (args.session_root or args.output_dir / "sessions").resolve()
+    default_native, default_code = MODE_CORDIS_PAIRS[args.toolset]
+    native_cordis = args.native_cordis or default_native
+    code_cordis = args.code_cordis or default_code
     native_output = args.output_dir / "native.jsonl"
     code_output = args.output_dir / "code.jsonl"
 
@@ -447,7 +456,7 @@ def command_compare_modes(args: argparse.Namespace) -> int:
         output_path=native_output,
         run_id=run_id,
         sessions_dir=sessions_root / "native",
-        cordis=args.native_cordis,
+        cordis=native_cordis,
         variant="native",
     )
     code = run_task_set(
@@ -456,15 +465,16 @@ def command_compare_modes(args: argparse.Namespace) -> int:
         output_path=code_output,
         run_id=run_id,
         sessions_dir=sessions_root / "code",
-        cordis=args.code_cordis,
+        cordis=code_cordis,
         variant="code",
     )
     comparison = compare_results(native, code)
     comparison.update({
         "baseline_variant": "native",
         "candidate_variant": "code",
-        "native_cordis": str(args.native_cordis.resolve()),
-        "code_cordis": str(args.code_cordis.resolve()),
+        "toolset": args.toolset,
+        "native_cordis": str(native_cordis.resolve()),
+        "code_cordis": str(code_cordis.resolve()),
     })
     comparison_path = args.output_dir / "comparison.json"
     comparison_path.write_text(json.dumps(comparison, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -500,12 +510,18 @@ def parser() -> argparse.ArgumentParser:
 
     modes = commands.add_parser(
         "compare-modes",
-        help="run the same tasks under native and Code Mode minimal compositions",
+        help="run the same tasks under native and Code Mode compositions",
     )
     modes.add_argument("tasks", type=Path)
     modes.add_argument("--output-dir", type=Path, required=True)
-    modes.add_argument("--native-cordis", type=Path, default=DEFAULT_NATIVE_CORDIS)
-    modes.add_argument("--code-cordis", type=Path, default=DEFAULT_CODE_CORDIS)
+    modes.add_argument(
+        "--toolset",
+        choices=tuple(MODE_CORDIS_PAIRS),
+        default="fs",
+        help="checked-in native/code composition pair (default: fs)",
+    )
+    modes.add_argument("--native-cordis", type=Path, help="override the selected toolset's native composition")
+    modes.add_argument("--code-cordis", type=Path, help="override the selected toolset's Code Mode composition")
     # Kept for run_one's common selection path; compare-modes always supplies
     # an explicit per-variant composition.
     modes.set_defaults(cordis=None)
