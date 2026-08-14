@@ -21,6 +21,7 @@ export const EMPTY_TRAJECTORY_SNAPSHOT: TrajectorySnapshot = {
   callSchemas: new Map(),
   partial: null,
   runningCalls: EMPTY_LIST,
+  executionAccounting: EMPTY_LIST,
 }
 
 function stepKey(turn: number, step: number): string {
@@ -190,6 +191,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
     let previousTools: ReadonlyMap<string, ToolSchema> = new Map()
     let partial: TrajectorySnapshot['partial'] = null
     const runningCalls: TrajectorySnapshot['runningCalls'][number][] = []
+    const executionAccounting: NonNullable<TrajectorySnapshot['executionAccounting']>[number][] = []
 
     for (const contribution of this.contributions) {
       const data = contribution.data
@@ -220,6 +222,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
       if (data.kind === 'tool') {
         if ('kind' in data.root) finalized.push(data.root)
         else runningCalls.push(data.root)
+        executionAccounting.push(...data.executionAccounting ?? [])
         if (previousHeader !== undefined && previousHeader.seq < contribution.anchorSeq) {
           captureSchemas(data.root, previousTools, callSchemas)
         }
@@ -252,6 +255,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
       callSchemas,
       partial,
       runningCalls,
+      executionAccounting,
     }
   }
 

@@ -3,6 +3,7 @@ import type {
   ConversationPromptSnapshot, ConversationViewNode, PartialAssistant,
   RequestPromptChange, RequestView, RunningToolCall, ToolCallBlock,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import type { CodeRunExecutionAccounting } from '@deepseek-ai/dsh-tools/execution-accounting'
 
 /** Request-header facts retained by the Trajectory target. */
 export interface TrajectoryRequestHeaderState {
@@ -28,6 +29,8 @@ export type TrajectoryContribution =
   | {
     readonly kind: 'tool'
     readonly root: ToolCallBlock
+    /** Durable Code Mode execution facts represented by this root Tool lifecycle. */
+    readonly executionAccounting?: readonly CodeRunExecutionAccounting[]
   }
   | {
     readonly kind: 'request-header'
@@ -65,6 +68,8 @@ export interface TrajectorySnapshot {
   readonly callSchemas: ReadonlyMap<string, ConversationPromptSnapshot['tools'][number]>
   readonly partial: PartialAssistant | null
   readonly runningCalls: readonly RunningToolCall[]
+  /** Durable Code Mode execution facts in the currently loaded Trajectory window. */
+  readonly executionAccounting?: readonly CodeRunExecutionAccounting[]
 }
 
 declare module '@deepseek-ai/dsh-client-runtime/client' {

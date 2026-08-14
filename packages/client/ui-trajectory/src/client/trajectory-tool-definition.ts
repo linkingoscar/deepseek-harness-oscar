@@ -3,6 +3,7 @@ import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
   RunningToolCall, ToolCallBlock, ToolResultNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import { deriveCodeRunExecutionAccounting } from '@deepseek-ai/dsh-tools/execution-accounting'
 import type {} from '@deepseek-ai/dsh-tools/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 
@@ -258,7 +259,14 @@ const trajectoryToolDefinition: ConversationNodeDefinition<ToolState> = {
     if (root === undefined) return null
     const anchorSeq = context.start?.event.seq
       ?? ('kind' in root ? root.seq : context.matches[0]?.event.seq ?? 0)
-    return trajectoryNode(context, anchorSeq, { kind: 'tool', root })
+    const executionAccounting = deriveCodeRunExecutionAccounting(
+      context.matches.map(match => match.event),
+    )
+    return trajectoryNode(context, anchorSeq, {
+      kind: 'tool',
+      root,
+      ...(executionAccounting.length === 0 ? {} : { executionAccounting }),
+    })
   },
 }
 /* jscpd:ignore-end */

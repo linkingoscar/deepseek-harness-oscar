@@ -26,6 +26,10 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"
     },
+    "./execution-accounting": {
+      "types": "./lib/types/execution-accounting.d.ts",
+      "default": "./lib/types/execution-accounting.js"
+    },
     "./presentation": {
       "types": "./lib/types/presentation.d.ts",
       "default": "./lib/presentation.js"
