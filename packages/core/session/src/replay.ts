@@ -1,5 +1,6 @@
 /**
- * Replay-semantics inspection over a validated current-format session log.
+ * Replay-semantics inspection and simulated request execution over a validated
+ * current-format session log.
  *
  * This module deliberately separates durable evidence from execution support:
  * an event log can prove that a request envelope and model-visible history are
@@ -31,7 +32,7 @@ export type ReplayBlockerCode =
   | 'NO_REQUEST_HEADER'
   | 'OPEN_TURN'
   | 'LIVE_SOURCE_REQUIRED'
-  | 'SIMULATED_EXECUTOR_NOT_IMPLEMENTED'
+  | 'SIMULATED_EXECUTOR_REQUIRED'
   | 'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED'
   | 'EXTERNAL_STATE_NOT_SNAPSHOTTED'
   | 'REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED'
@@ -66,6 +67,35 @@ export interface ReplayInspection {
   modes: Readonly<Record<ReplayMode, ReplayCapability>>
 }
 
+/**
+ * Caller-supplied executor for simulated replay.
+ *
+ * The core reconstruction layer performs no model call, tool dispatch, session
+ * append, or external I/O. A simulated executor must therefore declare
+ * `effects: 'none'`; callers that need live effects belong on the live-fork or
+ * future reproducible-executor path instead of weakening this contract.
+ */
+export interface ReplaySimulationExecutor<Result = unknown> {
+  /** Stable human-readable executor identity included in the replay result. */
+  readonly id: string
+  /** Simulated replay is effect-free by contract. */
+  readonly effects: 'none'
+  /** Evaluate one reconstructed historical request without mutating the source log. */
+  execute(request: ReplayRequestSnapshot): Result | Promise<Result>
+}
+
+/** Result of one executor-driven simulated replay. */
+export interface ReplaySimulation<Result = unknown> {
+  /** Replay mode, fixed for discriminated consumers. */
+  readonly mode: 'simulated'
+  /** Executor identity copied from the validated executor contract. */
+  readonly executorId: string
+  /** Exact Harness-owned historical request supplied to the executor. */
+  readonly request: ReplayRequestSnapshot
+  /** Opaque executor-owned simulation result. */
+  readonly result: Result
+}
+
 /** Error raised when an inspection boundary does not name a contiguous event in the supplied full log. */
 export class ReplayInspectionError extends Error {
   /**
@@ -74,6 +104,17 @@ export class ReplayInspectionError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'ReplayInspectionError'
+  }
+}
+
+/** Error raised before a simulated executor is entered. */
+export class ReplaySimulationError extends Error {
+  /**
+   * @param message - Human-readable simulated replay contract failure.
+   */
+  constructor(message: string) {
+    super(message)
+    this.name = 'ReplaySimulationError'
   }
 }
 
@@ -110,6 +151,44 @@ function capability(
 }
 
 /**
+ * Execute one historical request through a caller-supplied effect-free
+ * simulation executor.
+ *
+ * The selected request is reconstructed with the same canonical surface fold
+ * as request reconstruction. The core does not create a session, fork a live
+ * source, call a provider, or dispatch tools. The executor owns only the opaque
+ * simulation result and must explicitly declare `effects: 'none'`.
+ *
+ * @param events - Full validated current-format session log in sequence order.
+ * @param executor - Effect-free executor used to evaluate the reconstructed request.
+ * @param requestHeaderSeq - Optional exact historical `request/header`; omitted selects the latest.
+ * @returns The reconstructed request plus the executor's result.
+ */
+export async function simulateReplayRequest<Result>(
+  events: readonly SessionEvent[],
+  executor: ReplaySimulationExecutor<Result>,
+  requestHeaderSeq?: number,
+): Promise<ReplaySimulation<Result>> {
+  if (typeof executor?.id !== 'string' || executor.id.trim().length === 0) {
+    throw new ReplaySimulationError('simulated replay executor id must be a non-empty string')
+  }
+  if (executor.effects !== 'none') {
+    throw new ReplaySimulationError('simulated replay executor must declare effects: "none"')
+  }
+  const request = reconstructReplayRequest(events, requestHeaderSeq)
+  if (request === undefined) {
+    throw new ReplaySimulationError('simulated replay requires a reconstructable request/header')
+  }
+  const result = await executor.execute(request)
+  return Object.freeze({
+    mode: 'simulated',
+    executorId: executor.id,
+    request,
+    result,
+  })
+}
+
+/**
  * Inspect what replay claims are justified by a validated current-format log
  * prefix without executing a model, tool, or external effect.
  *
@@ -117,6 +196,11 @@ function capability(
  * can be rebuilt as both its Harness-owned request envelope and the canonical
  * model-visible messages that preceded that header. It does not claim ownership
  * of provider-added hidden framing or provider-side state.
+ *
+ * `simulated` becomes conditional when a request can be reconstructed: the
+ * shipped core now provides the executor-driven replay path, while the caller
+ * must still supply an explicitly effect-free executor. Without a request it
+ * remains unavailable regardless of executor availability.
  *
  * `live-fork` is intentionally `conditional` even at a stable boundary: the
  * offline log proves the prefix is fork-compatible, while the existing
@@ -146,7 +230,9 @@ export function inspectReplayCapabilities(
     'request-reconstruction': requestSnapshot === undefined
       ? capability('request-reconstruction', 'unavailable', 'none', ['NO_REQUEST_HEADER'])
       : capability('request-reconstruction', 'available', 'none'),
-    simulated: capability('simulated', 'unavailable', 'none', ['SIMULATED_EXECUTOR_NOT_IMPLEMENTED']),
+    simulated: requestSnapshot === undefined
+      ? capability('simulated', 'unavailable', 'none', ['NO_REQUEST_HEADER', 'SIMULATED_EXECUTOR_REQUIRED'])
+      : capability('simulated', 'conditional', 'none', ['SIMULATED_EXECUTOR_REQUIRED']),
     'live-fork': stableForkBoundary
       ? capability('live-fork', 'conditional', 'live-if-executed', ['LIVE_SOURCE_REQUIRED'])
       : capability('live-fork', 'unavailable', 'live-if-executed', ['OPEN_TURN', 'LIVE_SOURCE_REQUIRED']),
