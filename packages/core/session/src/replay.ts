@@ -2,13 +2,14 @@
  * Replay-semantics inspection over a validated current-format session log.
  *
  * This module deliberately separates durable evidence from execution support:
- * an event log can prove that a request envelope or fork boundary is
+ * an event log can prove that a request envelope and model-visible history are
  * reconstructable without proving that live effects can be reproduced.
  *
  * @module @deepseek-ai/dsh-session/replay
  */
 
-import { foldRequestHeader } from './request-header.ts'
+import { reconstructReplayRequest } from './replay-request.ts'
+import type { ReplayRequestSnapshot } from './replay-request.ts'
 import type { EpochHeader, SessionEvent } from './types.ts'
 
 /** Replay modes the Oscar fork distinguishes instead of collapsing into one ambiguous "replay" operation. */
@@ -55,16 +56,21 @@ export interface ReplayInspection {
   eventCount: number
   /** Whether the prefix ends outside an open turn and is therefore boundary-compatible with `SessionStore.fork()`. */
   stableForkBoundary: boolean
-  /** Seq of the latest `request/header` in the prefix, when one exists. */
+  /** Seq of the latest reconstructable `request/header` in the prefix, when one exists. */
   latestRequestHeaderSeq?: number
-  /** Harness-owned request envelope in force at the latest recorded request, when reconstructable. */
+  /** Harness-owned request envelope retained as a convenience projection of {@link requestSnapshot}. */
   requestHeader?: EpochHeader
+  /** Latest complete Harness-owned request snapshot: envelope plus canonical model-visible messages. */
+  requestSnapshot?: ReplayRequestSnapshot
   /** Per-mode evidence/executor contract. */
   modes: Readonly<Record<ReplayMode, ReplayCapability>>
 }
 
 /** Error raised when an inspection boundary does not name a contiguous event in the supplied full log. */
 export class ReplayInspectionError extends Error {
+  /**
+   * @param message - Human-readable inspection-boundary failure.
+   */
   constructor(message: string) {
     super(message)
     this.name = 'ReplayInspectionError'
@@ -107,8 +113,9 @@ function capability(
  * Inspect what replay claims are justified by a validated current-format log
  * prefix without executing a model, tool, or external effect.
  *
- * `request-reconstruction` means the latest Harness-owned request envelope and
- * its preceding durable session prefix are present. It does not claim ownership
+ * `request-reconstruction` is available only when the latest recorded request
+ * can be rebuilt as both its Harness-owned request envelope and the canonical
+ * model-visible messages that preceded that header. It does not claim ownership
  * of provider-added hidden framing or provider-side state.
  *
  * `live-fork` is intentionally `conditional` even at a stable boundary: the
@@ -132,12 +139,11 @@ export function inspectReplayCapabilities(
   const prefix = resolvedBoundary === null ? [] : events.slice(0, resolvedBoundary + 1)
   const lastTurnBoundary = prefix.findLast(event => event.type === 'turn/start' || event.type === 'turn/end')
   const stableForkBoundary = lastTurnBoundary?.type !== 'turn/start'
-  const latestHeaderEvent = prefix.findLast(event => event.type === 'request/header')
-  const requestHeader = foldRequestHeader(prefix)
+  const requestSnapshot = reconstructReplayRequest(prefix)
 
   const modes: Record<ReplayMode, ReplayCapability> = {
     transcript: capability('transcript', 'available', 'none'),
-    'request-reconstruction': requestHeader === undefined
+    'request-reconstruction': requestSnapshot === undefined
       ? capability('request-reconstruction', 'unavailable', 'none', ['NO_REQUEST_HEADER'])
       : capability('request-reconstruction', 'available', 'none'),
     simulated: capability('simulated', 'unavailable', 'none', ['SIMULATED_EXECUTOR_NOT_IMPLEMENTED']),
@@ -155,8 +161,11 @@ export function inspectReplayCapabilities(
     boundary: resolvedBoundary,
     eventCount: prefix.length,
     stableForkBoundary,
-    ...(latestHeaderEvent === undefined ? {} : { latestRequestHeaderSeq: latestHeaderEvent.seq }),
-    ...(requestHeader === undefined ? {} : { requestHeader }),
+    ...(requestSnapshot === undefined ? {} : {
+      latestRequestHeaderSeq: requestSnapshot.requestHeaderSeq,
+      requestHeader: requestSnapshot.header,
+      requestSnapshot,
+    }),
     modes: Object.freeze(modes),
   })
 }
