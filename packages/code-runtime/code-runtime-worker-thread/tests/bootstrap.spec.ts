@@ -59,7 +59,7 @@ async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
   }
 }
 
-const BOOT = { maxOutputBytes: 65_536 }
+const BOOT = { maxOutputBytes: 65_536, maxBindingValueBytes: 0 }
 const TOOL_ERROR_CLASS = { name: 'ToolCallError', memberNameProperty: 'toolName' } as const
 
 /** One worker declaration for the Code Mode tools namespace. */
