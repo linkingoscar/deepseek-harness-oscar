@@ -10,6 +10,8 @@ DeepSeek Harness（`dsh`）本身是一个开源 agent harness，采用**一切�
 
 这个 fork 的目标不是堆叠大量产品功能，而是把 harness 强化成一个更可审计的执行底座：显式 accounting、持久化 evidence、可复现 replay、默认行为中性的 diagnostics，以及能够验证结果而不是只打印分数的 benchmark 基础设施。
 
+项目页面：**https://linkingoscar.github.io/deepseek-harness-oscar/**
+
 ## Fork 开发思想
 
 当前开发围绕六条原则展开：
@@ -25,7 +27,9 @@ DeepSeek Harness（`dsh`）本身是一个开源 agent harness，采用**一切�
 
 状态快照：**2026-08-15**。
 
-### 已落到 `master`
+第一阶段的三条并行开发线现在已经**全部落到 `master`**。项目已经从并行功能建设切换到 integration、validation 和 evidence-driven experimentation 阶段。
+
+### 已落地主干的基础能力
 
 - ✅ **Replay capability semantics** — 已将不同 replay 模式建模为具有不同 effect / snapshot 语义的能力。
 - ✅ **历史请求重建** — 可以为 replay-oriented workflow 重建 canonical historical request snapshot。
@@ -33,45 +37,61 @@ DeepSeek Harness（`dsh`）本身是一个开源 agent harness，采用**一切�
 - ✅ **Code Mode delivery-byte accounting** — 记录成功 sub-dispatch 实际交付的 canonical JSON 字节数，并显式保留 legacy unknown evidence。
 - ✅ **Delivery admission accounting** — 将工具执行成功与结果 delivery/admission 分离，并记录明确的 delivery-rejection evidence。
 - ✅ **累计结果字节预算** — Code Mode 可对单次 run 的已交付结果字节数施加累计预算，同时不混淆“执行成功”和“交付成功”。
-- ✅ **DevTools execution summary** — trajectory inspection 已可展示持久化的 Code Mode execution accounting 与 delivery-byte evidence。
 - ✅ **聚焦 runtime/fixture 覆盖** — Worker boot fixture 与 fork 自有测试已覆盖当前 binding/output budget contract。
 
-### 当前工作流
+### 已完成的三条并行开发线
 
-以下分支均从当前 `master` baseline 切出。按本快照，它们仍指向同一个 baseline commit，因此下表描述的是**工作流范围**，不是已经完成并落地的功能。
-
-| Branch | 范围 | 当前状态 |
+| Workstream | 已交付能力 | 状态 |
 | --- | --- | --- |
-| `agent/execution-devtools-diagnostics` | 把现有 accounting/evidence 做成更强的 diagnostics，包括 `deliveryRejected`、字节统计、peak concurrency、unsettled/orphan dispatch 检测，以及按工具聚合的 execution summary。除非显式需要，否则不改变 runtime 行为。 | 工作流已开启；分支当前仍在 `master` baseline |
-| `agent/offline-benchmark-validation` | 完善 benchmark harness 本身，包括 paired-result schema、fixture/deterministic replay、结果一致性校验、failure taxonomy、报告生成。 | 工作流已开启；分支当前仍在 `master` baseline |
-| `agent/replay-reproducibility-evidence` | 继续强化 replay reproducibility，以及证明某次 replay 实际使用了哪些输入、snapshot、effect 与 output 所需的 evidence。 | 工作流已开启；分支当前仍在 `master` baseline |
+| `agent/replay-reproducibility-evidence` | 持久化 request-scoped reproducibility evidence，记录 replay 实际使用的 input / snapshot / effect context，并避免把 live fork 与 reproducible replay 混为一谈。 | ✅ PR #17 已合并 |
+| `agent/execution-devtools-diagnostics` | 基于既有 durable accounting 纯派生 diagnostics，覆盖 `deliveryRejected`、measured/unmeasured byte accounting、run-local peak concurrency、unsettled/orphan dispatch、incomplete evidence 与 per-tool summary。 | ✅ PR #18 已合并；publication constraint 由 PR #20 补齐 |
+| `agent/offline-benchmark-validation` | versioned paired-result validation、semantic task fingerprint、deterministic offline fixture/replay、failure taxonomy、一致性校验与中性的 Markdown 报告生成。 | ✅ PR #19 已合并 |
 
-## Roadmap
+Benchmark 最终集成经过 fork CI 验证：**35/35 static gates 全部通过**，同时 benchmark、execution accounting、delivery-byte、admission、replay 与 trajectory focused tests 也全部通过。
 
-### P0 — 先让执行证据可信
+## 现在这个 fork 能证明什么
 
-- 保证 dispatch / execution / delivery accounting 显式且内部一致。
-- 补齐 rejected delivery、byte accounting、concurrency、unsettled/orphan work 等诊断缺口。
-- 让 per-tool execution summary 足够有用，使开发者不必手工阅读原始 event stream 才能解释一次 trajectory。
+这一阶段做的核心不是“得出产品结论”，而是提高证据质量。
 
-### P1 — 让 replay 真正可复现、可检查
+### Execution
 
-- 继续收紧 historical request snapshot 与 replay input 的契约。
-- 让 deterministic / effect-free replay 路径适合 fixture 与 regression test。
-- 持久化足够的证据，明确区分“可复现 replay”和“只是从相似状态开始的 live fork”。
+runtime 可以保留一次 tool dispatch 的 started、settled、failed，以及结果是否成功 delivery/admission 的区别。diagnostics 可以从 durable facts 做聚合，而不改变 scheduler 行为。
 
-### P2 — 验证 benchmark harness 本身
+### Delivery 与 bytes
 
-- 定义带有显式 provenance 与 failure state 的 paired-result schema。
-- 为 harness validation 建立 deterministic fixture / replay。
-- 加入结果一致性校验与 failure taxonomy。
-- 从经过验证的结果生成报告，而不是依赖 ad-hoc console output。
+Code Mode accounting 可以区分 measured delivery bytes 与 unknown evidence，记录 delivery rejection，并对累计 delivered-result budget 做推导，而不会把“执行成功”等同于“结果进入模型上下文”。
 
-### P3 — 在保持上游兼容性的前提下整合
+### Replay
 
-- 继续把改动放在清晰、可测试的 package/plugin seam 后面。
-- 有意识地与上游同步/rebase，避免积累不必要的 fork-only 架构。
-- 把稳定后的 diagnostics 与 replay contract 提炼成可复用的 developer tooling。
+Replay-oriented flow 可以重建历史请求输入，并保留 request-scoped reproducibility evidence。这个 fork 会继续明确区分 live-fork semantics、reproducible replay 与 effect-free simulated replay。
+
+### Benchmark validation
+
+Offline benchmark harness 现在把 observation 当成带版本的 evidence 来处理：它会校验 result-set invariant，默认要求严格 paired observation，记录 failure transition，支持 deterministic fixture replay，并从已记录 observation 生成描述性报告。
+
+**它不会制造伪 benchmark observation，也不会自动推导 Code Mode 或某一种配置更优。**
+
+## 下一阶段
+
+接下来不是继续为了“有更多 feature”而扩三条支线，而是把已经进入 `master` 的能力整合起来，并开始用它们做可复核的实验。
+
+### P0 — 整合 developer diagnostics
+
+- 把 execution summary、replay evidence 与 trajectory inspection 串成一致的 debugging workflow。
+- durable evidence 只支持 run-local claim 时，就不把它包装成 global/session claim。
+- 提高可发现性，但不把策略判断偷偷塞进 diagnostics 层。
+
+### P1 — 开始做可复现实验
+
+- 真实 benchmark 使用可追溯输入与经过校验的 paired result。
+- 保留 raw observation、failure taxonomy、fixture provenance 与 report，确保结果可检查。
+- 把结论留在 experiment 层，而不是让 benchmark harness 隐式替用户排名。
+
+### P2 — 持续保持上游兼容
+
+- 有意识地与 upstream rebase/sync，避免积累不必要的 fork-only 架构。
+- 优先保持小而清晰的 package/plugin seam，以及默认行为中性的 instrumentation。
+- 对已经证明有价值的 evidence contract，再考虑提升为更通用的 developer tooling。
 
 ## 明确的非目标
 
@@ -88,7 +108,7 @@ DeepSeek Harness（`dsh`）本身是一个开源 agent harness，采用**一切�
 
 上游项目采用**一切皆插件**的架构，并由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper)。
 
-DeepSeek Harness 目前仍处于 developer preview 并快速迭代，因此应预期上游会继续出现破坏兼容性的变更。
+DeepSeek Harness 是一个快速演进的 developer-oriented 项目，因此 upstream compatibility 应该被视为持续的工程工作，而不是一次性的 migration。
 
 ## 运行
 

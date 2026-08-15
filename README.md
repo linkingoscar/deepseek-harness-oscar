@@ -6,13 +6,15 @@ English | [中文](README.zh.md)
 
 DeepSeek Harness (`dsh`) is an open-source agent harness built around an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis). This fork keeps that architecture, but focuses development on a narrower question:
 
-**Can an agent runtime make execution, delivery, replay, and evaluation evidence precise enough to diagnose and reproduce what actually happened?**
+**Can an agent runtime make execution, delivery, replay, and evaluation evidence precise enough to diagnose, reproduce, and validate what actually happened?**
 
 The goal is not to add a large collection of product features. The goal is to strengthen the harness as an auditable execution substrate: explicit accounting, durable evidence, reproducible replay, behavior-neutral diagnostics, and benchmark infrastructure whose results can be validated rather than merely printed.
 
+Project page: **https://linkingoscar.github.io/deepseek-harness-oscar/**
+
 ## Fork direction
 
-This fork is being developed around six principles:
+This fork is developed around six principles:
 
 1. **Evidence before interpretation.** Persist the facts required to explain a run before drawing conclusions from it.
 2. **Execution and delivery are different events.** A tool can execute successfully while its result is rejected, truncated, unmeasured, or never admitted back into the model context. Accounting should preserve that distinction.
@@ -25,7 +27,9 @@ This fork is being developed around six principles:
 
 Status snapshot: **2026-08-15**.
 
-### Landed on `master`
+The first three parallel fork workstreams are now **landed on `master`**. The project has moved from parallel feature construction into integration, validation, and evidence-driven experimentation.
+
+### Landed foundations
 
 - ✅ **Replay capability semantics** — replay modes are modeled with distinct effect and snapshot semantics.
 - ✅ **Historical request reconstruction** — canonical request snapshots can be reconstructed for replay-oriented workflows.
@@ -33,62 +37,78 @@ Status snapshot: **2026-08-15**.
 - ✅ **Code Mode delivery-byte accounting** — exact canonical JSON bytes delivered by successful sub-dispatches are recorded, while unknown legacy evidence remains explicit.
 - ✅ **Delivery admission accounting** — successful execution is separated from result delivery/admission, including explicit delivery-rejection evidence.
 - ✅ **Cumulative result-byte budget** — Code Mode can enforce a per-run delivered-result byte budget without collapsing execution success into delivery success.
-- ✅ **DevTools execution summary** — trajectory inspection exposes durable Code Mode execution accounting and delivery-byte evidence.
 - ✅ **Focused runtime/fixture coverage** — Worker boot fixtures and fork-owned tests track the current binding/output budget contracts.
 
-### Active workstreams
+### Completed parallel workstreams
 
-The following branches were cut from the current `master` baseline. At the snapshot above they still point at the same baseline commit, so the table describes **workstream scope**, not already-landed functionality.
-
-| Branch | Scope | Current state |
+| Workstream | Delivered capability | State |
 | --- | --- | --- |
-| `agent/execution-devtools-diagnostics` | Turn existing accounting/evidence into stronger diagnostics: `deliveryRejected`, byte accounting, peak concurrency, unsettled/orphan dispatch detection, and per-tool execution summaries. Runtime behavior should remain unchanged unless a change is explicitly required. | Workstream opened; branch currently at `master` baseline |
-| `agent/offline-benchmark-validation` | Harden the benchmark harness itself: paired-result schema, fixtures/deterministic replay, consistency validation, failure taxonomy, and report generation. | Workstream opened; branch currently at `master` baseline |
-| `agent/replay-reproducibility-evidence` | Strengthen replay reproducibility and the evidence required to prove what inputs, snapshots, effects, and outputs a replay actually used. | Workstream opened; branch currently at `master` baseline |
+| `agent/replay-reproducibility-evidence` | Durable request-scoped reproducibility evidence that records the actual replay input/snapshot/effect context without conflating a live fork with a reproducible replay. | ✅ Merged via PR #17 |
+| `agent/execution-devtools-diagnostics` | Pure derived execution diagnostics covering `deliveryRejected`, measured/unmeasured byte accounting, run-local peak concurrency, unsettled/orphan dispatch evidence, incomplete evidence, and per-tool summaries. | ✅ Merged via PR #18; publication constraint follow-up via PR #20 |
+| `agent/offline-benchmark-validation` | Versioned paired-result validation, semantic task fingerprints, deterministic offline fixtures/replay, failure taxonomy, consistency checks, and neutral Markdown report generation. | ✅ Merged via PR #19 |
 
-## Roadmap
+The benchmark integration was validated by the fork CI with **35/35 static gates passing** plus focused benchmark, execution-accounting, delivery-byte, admission, replay, and trajectory tests.
 
-### P0 — Make execution evidence trustworthy
+## What the fork can now prove
 
-- Keep dispatch/execution/delivery accounting explicit and internally consistent.
-- Close diagnostic gaps around rejected delivery, bytes, concurrency, and unsettled/orphan work.
-- Make per-tool execution summaries useful enough to explain a trajectory without reading raw event streams by hand.
+The work above is deliberately about evidence quality rather than product claims.
 
-### P1 — Make replay reproducible and inspectable
+### Execution
 
-- Tighten the contracts around historical request snapshots and replay inputs.
-- Make deterministic/effect-free replay paths suitable for fixtures and regression testing.
-- Persist enough evidence to distinguish reproducible replay from a live fork that happens to start from similar state.
+The runtime can preserve the distinction between a tool dispatch starting, settling, failing, and having its result accepted or rejected for delivery. Derived diagnostics can summarize those durable facts without changing scheduler behavior.
 
-### P2 — Validate the benchmark harness
+### Delivery and bytes
 
-- Define a paired-result schema with explicit provenance and failure state.
-- Build deterministic fixtures/replay for harness validation.
-- Add result-consistency checks and a failure taxonomy.
-- Generate reports from validated results rather than ad-hoc console output.
+Code Mode accounting can distinguish measured delivery bytes from unknown evidence, track delivery rejection, and reason about cumulative delivered-result budgets without treating execution success as equivalent to model-context delivery.
 
-### P3 — Integrate without losing upstream compatibility
+### Replay
 
-- Keep changes modular and testable behind clear package/plugin seams.
+Replay-oriented flows can reconstruct historical request inputs and retain request-scoped reproducibility evidence. The fork keeps live-fork semantics, reproducible replay, and effect-free simulated replay conceptually separate.
+
+### Benchmark validation
+
+The offline benchmark harness now treats observations as versioned evidence. It validates result-set invariants, requires strict paired observations by default, records failure transitions, supports deterministic fixture replay, and generates descriptive reports from recorded observations.
+
+**It does not fabricate benchmark observations and does not infer that Code Mode or any configuration is superior.**
+
+## Next phase
+
+The next phase is integration and evidence-driven use of the infrastructure that is now on `master`.
+
+### P0 — Consolidate developer diagnostics
+
+- Connect execution summaries, replay evidence, and trajectory inspection into a coherent debugging workflow.
+- Keep global/session claims separate from run-local evidence unless durable ordering data can actually support them.
+- Improve discoverability without moving policy decisions into diagnostics code.
+
+### P1 — Run reproducible experiments
+
+- Use recorded, attributable inputs and validated result pairs for real benchmark runs.
+- Keep raw observations, failure taxonomy, fixture provenance, and reports inspectable.
+- Make interpretation an explicit experiment-level decision rather than a hidden harness policy.
+
+### P2 — Keep the fork upstream-compatible
+
 - Rebase/sync with upstream deliberately instead of accumulating avoidable fork-only architecture.
-- Promote stable diagnostics and replay contracts into reusable developer tooling.
+- Preserve small package/plugin seams and behavior-neutral instrumentation where possible.
+- Promote stable evidence contracts into reusable developer tooling when they prove useful.
 
 ## Non-goals
 
 This fork deliberately does **not** treat infrastructure work as evidence for a model or execution-mode ranking.
 
-- No fabricated or synthetic "benchmark results" presented as real measurements.
+- No fabricated or synthetic “benchmark results” presented as real measurements.
 - No claim that Code Mode is better or worse merely because new accounting, replay, or benchmark machinery exists.
 - No silent runtime behavior changes hidden inside diagnostics work.
 - No rewrite of the everything-is-a-plugin / Cordis architecture just to make fork-specific features easier to bolt on.
 
-When performance claims are eventually made, they should come from reproducible inputs, validated result pairs, explicit failure handling, and inspectable reports.
+When performance claims are made, they should come from reproducible inputs, validated result pairs, explicit failure handling, and inspectable reports.
 
 ## Upstream architecture
 
 The upstream project uses an architecture where **everything is a plugin**, powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
 
-DeepSeek Harness is currently a developer preview and iterates rapidly, so compatibility-breaking upstream changes should be expected.
+DeepSeek Harness is a rapidly evolving developer-oriented project, so upstream compatibility should be treated as an active engineering concern rather than a one-time migration task.
 
 ## Run
 
