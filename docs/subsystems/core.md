@@ -794,7 +794,7 @@ A step or turn errored. The machine reports a failure here even when the error h
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:290`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:309`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentinboxclaimed--emit"></a>
 
@@ -940,7 +940,39 @@ Handle one failed model-request attempt before the loop retries or closes its st
 
 Types: [LlmFailure](llm-streaming.md) · [ResolvedRetryPolicy](llm-streaming.md) · [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:260`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:279`](../../packages/core/agent/src/runtime-types.ts)
+
+<a id="agentrequest-reproducibility-evidence--emit"></a>
+
+#### `agent/request-reproducibility-evidence` — emit
+
+Collect already-available reproducibility evidence for one exact committed `request/header`, after canonical adapter defaults/system/tools are durable and before provider dispatch. This is a synchronous, non-vetoing notification: listeners add evidence through `sink` before returning. Returned promises are not awaited; late writes hit the sealed collector. Listener failures are contained and cannot change the request or block the provider call. Conflicting valid contributions are resolved fail-closed by the collector rather than by listener order.
+
+```ts cordis-catalog
+/**
+ * Collect already-available reproducibility evidence for one exact committed
+ * `request/header`, after canonical adapter defaults/system/tools are durable
+ * and before provider dispatch. This is a synchronous, non-vetoing
+ * notification: listeners add evidence through `sink` before returning.
+ * Returned promises are not awaited; late writes hit the sealed collector.
+ * Listener failures are contained and cannot change the request or block the
+ * provider call. Conflicting valid contributions are resolved fail-closed by
+ * the collector rather than by listener order.
+ * @param payload.agent - the agent whose request header was committed.
+ * @param payload.turn - the open turn number.
+ * @param payload.step - the step whose request is about to dispatch.
+ * @param payload.requestHeaderSeq - exact committed `request/header` seq.
+ * @param payload.header - exact frozen header snapshot stored at that seq.
+ * @param payload.sink - synchronous write-only evidence collector capability.
+ * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @mode emit
+ */
+'agent/request-reproducibility-evidence'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; requestHeaderSeq: number; header: EpochHeader; sink: ReplayReproducibilityEvidenceSink }): void
+```
+
+Types: [EpochHeader](session.md) · [ReplayReproducibilityEvidenceSink](session.md) · [Scoped](scope.md)
+
+Source: [`packages/core/agent/src/runtime-types.ts:263`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentsession-start--emit"></a>
 
@@ -1018,7 +1050,7 @@ The turn is about to close: the model owes no response (no live tool calls, no f
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:278`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:297`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agent-loop-events"></a>
 

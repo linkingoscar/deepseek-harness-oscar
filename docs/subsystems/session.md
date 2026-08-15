@@ -94,6 +94,15 @@ interface SessionEventMap {
    */
   'request/header': { header: EpochHeader; reason: RequestHeaderReason }
   /**
+   * Reproducibility evidence captured for one exact historical
+   * `request/header`. Log-only and required: readers that do not understand
+   * this event must not silently skip evidence that changes which replay
+   * blockers are justified. Identity fingerprints are comparison evidence,
+   * not snapshots; the two snapshot references are the only fields that can
+   * satisfy their corresponding snapshot-presence requirements.
+   */
+  'replay/reproducibility-evidence': ReplayReproducibilityEvidence
+  /**
    * Route metadata for the next request, logged only when the route or capacity
    * changes. It does not participate in request reconstruction or header equality.
    */

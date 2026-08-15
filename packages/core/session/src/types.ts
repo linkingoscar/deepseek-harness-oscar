@@ -227,6 +227,81 @@ export interface RequestContext {
  */
 export type RequestHeaderReason = 'initial' | 'resume' | 'change'
 
+/** Content digest used by reproducibility evidence. */
+export interface ReplayEvidenceDigest {
+  /** Digest algorithm. Fixed to SHA-256 for the first durable evidence version. */
+  readonly algorithm: 'sha256'
+  /** Lowercase 64-character hexadecimal SHA-256 digest. */
+  readonly digest: string
+}
+
+/**
+ * Identity-only evidence for execution inputs that are useful to compare but
+ * are not themselves restorable snapshots.
+ */
+export interface ReplayIdentityManifest {
+  /** Runtime implementation/build identity. */
+  readonly runtime?: ReplayEvidenceDigest
+  /** Effective harness/runtime configuration identity outside the request envelope. */
+  readonly configuration?: ReplayEvidenceDigest
+  /** Model-visible tool-schema set identity. */
+  readonly toolSchemas?: ReplayEvidenceDigest
+  /** Composed plugin graph identity. */
+  readonly pluginGraph?: ReplayEvidenceDigest
+}
+
+/** Durable reference to a content-addressed replay snapshot. */
+export interface ReplaySnapshotReference {
+  /** Snapshot encoding/format understood by a future reproducible executor. */
+  readonly format: string
+  /** Opaque non-empty locator from which the snapshot may later be resolved. */
+  readonly locator: string
+  /** Digest of the exact referenced snapshot bytes. */
+  readonly digest: ReplayEvidenceDigest
+}
+
+/**
+ * Request-scoped evidence relevant to reproducible replay.
+ *
+ * Fingerprints under `identity` prove only comparable identity. They never
+ * satisfy a snapshot requirement. Only a structurally valid snapshot reference
+ * can remove its corresponding `*_NOT_SNAPSHOTTED` blocker, and even complete
+ * snapshot evidence does not make reproducible replay available without a
+ * reproducible executor.
+ */
+export interface ReplayReproducibilityEvidence {
+  /** Durable payload schema version. */
+  readonly version: 1
+  /** Exact historical `request/header` seq this evidence describes. */
+  readonly requestHeaderSeq: number
+  /** Optional identity fingerprints; useful for comparison, never a restorable snapshot. */
+  readonly identity?: ReplayIdentityManifest
+  /** Restorable execution-environment snapshot reference, when captured. */
+  readonly executionEnvironmentSnapshot?: ReplaySnapshotReference
+  /** Restorable external-world/state snapshot reference, when captured. */
+  readonly externalStateSnapshot?: ReplaySnapshotReference
+}
+
+/** One synchronous contribution made while a request-header capture boundary is open. */
+export interface ReplayReproducibilityEvidenceContribution {
+  /** Comparable identities. They never count as restorable snapshots. */
+  readonly identity?: ReplayIdentityManifest
+  /** Restorable execution-environment snapshot reference, when owned by this contributor. */
+  readonly executionEnvironmentSnapshot?: ReplaySnapshotReference
+  /** Restorable external-state snapshot reference, when owned by this contributor. */
+  readonly externalStateSnapshot?: ReplaySnapshotReference
+}
+
+/**
+ * Narrow write-only capability exposed to request-scoped evidence contributors.
+ * Contributions are synchronous by contract; the loop seals the sink as soon
+ * as the capture notification returns.
+ */
+export interface ReplayReproducibilityEvidenceSink {
+  /** Add one validated contribution to the current atomic capture. */
+  add(contribution: ReplayReproducibilityEvidenceContribution): void
+}
+
 /**
  * The merge-extensible, append-only source of truth for an agent interaction.
  * Message history is derived from this log. Every event is lossless JSON and
@@ -302,6 +377,15 @@ export interface SessionEventMap {
    * It is log-only; the latest snapshot reconstructs the request header.
    */
   'request/header': { header: EpochHeader; reason: RequestHeaderReason }
+  /**
+   * Reproducibility evidence captured for one exact historical
+   * `request/header`. Log-only and required: readers that do not understand
+   * this event must not silently skip evidence that changes which replay
+   * blockers are justified. Identity fingerprints are comparison evidence,
+   * not snapshots; the two snapshot references are the only fields that can
+   * satisfy their corresponding snapshot-presence requirements.
+   */
+  'replay/reproducibility-evidence': ReplayReproducibilityEvidence
   /**
    * Route metadata for the next request, logged only when the route or capacity
    * changes. It does not participate in request reconstruction or header equality.

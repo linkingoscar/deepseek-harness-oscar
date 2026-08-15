@@ -2246,6 +2246,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'payload', description: '.signal - the turn abort signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
   },
   {
+    name: 'agent/request-reproducibility-evidence',
+    mode: 'emit',
+    signature: '\'agent/request-reproducibility-evidence\'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; requestHeaderSeq: number; header: EpochHeader; sink: ReplayReproducibilityEvidenceSink }): void',
+    summary: 'Collect already-available reproducibility evidence for one exact committed `request/header`, after canonical adapter defaults/system/tools are durable and before provider dispatch.',
+    description: 'Collect already-available reproducibility evidence for one exact committed `request/header`, after canonical adapter defaults/system/tools are durable and before provider dispatch. This is a synchronous, non-vetoing notification: listeners add evidence through `sink` before returning. Returned promises are not awaited; late writes hit the sealed collector. Listener failures are contained and cannot change the request or block the provider call. Conflicting valid contributions are resolved fail-closed by the collector rather than by listener order.',
+    parameters: [{ name: 'payload', description: '.sink - synchronous write-only evidence collector capability. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
+  },
+  {
     name: 'agent/session-start',
     mode: 'emit',
     signature: '\'agent/session-start\'(this: Scoped<Agent>, payload: { agent: Agent; source: SessionStartSource }): void',
@@ -3578,6 +3586,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
   },
   {
+    name: 'ReplayEvidenceDigest',
+    declaration: 'export interface ReplayEvidenceDigest {\n    readonly algorithm: \'sha256\';\n    readonly digest: string;\n}',
+  },
+  {
+    name: 'ReplayIdentityManifest',
+    declaration: 'export interface ReplayIdentityManifest {\n    readonly runtime?: ReplayEvidenceDigest;\n    readonly configuration?: ReplayEvidenceDigest;\n    readonly toolSchemas?: ReplayEvidenceDigest;\n    readonly pluginGraph?: ReplayEvidenceDigest;\n}',
+  },
+  {
+    name: 'ReplayReproducibilityEvidence',
+    declaration: 'export interface ReplayReproducibilityEvidence {\n    readonly version: 1;\n    readonly requestHeaderSeq: number;\n    readonly identity?: ReplayIdentityManifest;\n    readonly executionEnvironmentSnapshot?: ReplaySnapshotReference;\n    readonly externalStateSnapshot?: ReplaySnapshotReference;\n}',
+  },
+  {
+    name: 'ReplayReproducibilityEvidenceContribution',
+    declaration: 'export interface ReplayReproducibilityEvidenceContribution {\n    readonly identity?: ReplayIdentityManifest;\n    readonly executionEnvironmentSnapshot?: ReplaySnapshotReference;\n    readonly externalStateSnapshot?: ReplaySnapshotReference;\n}',
+  },
+  {
+    name: 'ReplayReproducibilityEvidenceSink',
+    declaration: 'export interface ReplayReproducibilityEvidenceSink {\n    add(contribution: ReplayReproducibilityEvidenceContribution): void;\n}',
+  },
+  {
+    name: 'ReplaySnapshotReference',
+    declaration: 'export interface ReplaySnapshotReference {\n    readonly format: string;\n    readonly locator: string;\n    readonly digest: ReplayEvidenceDigest;\n}',
+  },
+  {
     name: 'RequestContext',
     declaration: 'export interface RequestContext {\n    provider: string;\n    model: string;\n    contextWindow?: number;\n}',
   },
@@ -3731,7 +3763,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionEventMap',
-    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'assistant/chunk\': {\n        turn: number;\n        step: number;\n        chunk: StreamChunk;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        usage?: TokenUsage;\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: CallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'todo/write\': {\n        todos: TodoItem[];\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': Record<string, never>;\n}',
+    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'assistant/chunk\': {\n        turn: number;\n        step: number;\n        chunk: StreamChunk;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        usage?: TokenUsage;\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: CallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'todo/write\': {\n        todos: TodoItem[];\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n    };\n    \'replay/reproducibility-evidence\': ReplayReproducibilityEvidence;\n    \'request/context\': RequestContext;\n    \'session/end-seed\': Record<string, never>;\n}',
   },
   {
     name: 'SessionEventMetadataFilter',

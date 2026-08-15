@@ -9,9 +9,17 @@
  * @module @deepseek-ai/dsh-session/replay
  */
 
+import { normalizeReplayReproducibilityEvidence } from './reproducibility-evidence.ts'
 import { reconstructReplayRequest } from './replay-request.ts'
 import type { ReplayRequestSnapshot } from './replay-request.ts'
-import type { EpochHeader, SessionEvent } from './types.ts'
+import type { EpochHeader, ReplayReproducibilityEvidence, SessionEvent } from './types.ts'
+
+export type {
+  ReplayEvidenceDigest,
+  ReplayIdentityManifest,
+  ReplayReproducibilityEvidence,
+  ReplaySnapshotReference,
+} from './types.ts'
 
 /** Replay modes the Oscar fork distinguishes instead of collapsing into one ambiguous "replay" operation. */
 export type ReplayMode =
@@ -63,6 +71,10 @@ export interface ReplayInspection {
   requestHeader?: EpochHeader
   /** Latest complete Harness-owned request snapshot: envelope plus canonical model-visible messages. */
   requestSnapshot?: ReplayRequestSnapshot
+  /** Seq of the validated evidence record selected for the latest request. */
+  reproducibilityEvidenceSeq?: number
+  /** Validated latest atomic reproducibility-evidence record for the latest request. */
+  reproducibilityEvidence?: ReplayReproducibilityEvidence
   /** Per-mode evidence/executor contract. */
   modes: Readonly<Record<ReplayMode, ReplayCapability>>
 }
@@ -118,6 +130,25 @@ export class ReplaySimulationError extends Error {
   }
 }
 
+/** Select the latest atomic evidence record for one exact request, failing closed on malformed replacement evidence. */
+function latestReproducibilityEvidence(
+  events: readonly SessionEvent[],
+  requestHeaderSeq: number,
+): { seq: number; evidence: ReplayReproducibilityEvidence } | undefined {
+  let latest: SessionEvent<'replay/reproducibility-evidence'> | undefined
+  for (const event of events) {
+    if (event.type !== 'replay/reproducibility-evidence' || event.seq <= requestHeaderSeq) continue
+    const data = event.data as unknown
+    if (typeof data !== 'object' || data === null || Array.isArray(data)
+      || !('requestHeaderSeq' in data) || data.requestHeaderSeq !== requestHeaderSeq) continue
+    latest = event
+  }
+  if (latest === undefined || latest.ignorable === true) return undefined
+  const evidence = normalizeReplayReproducibilityEvidence(latest.data)
+  if (evidence === undefined || evidence.requestHeaderSeq !== requestHeaderSeq) return undefined
+  return { seq: latest.seq, evidence }
+}
+
 /** Resolve and validate the inclusive inspection boundary. */
 function resolveBoundary(events: readonly SessionEvent[], requested: number | undefined): number | null {
   if (events.length === 0) {
@@ -169,10 +200,16 @@ export async function simulateReplayRequest<Result>(
   executor: ReplaySimulationExecutor<Result>,
   requestHeaderSeq?: number,
 ): Promise<ReplaySimulation<Result>> {
-  if (typeof executor?.id !== 'string' || executor.id.trim().length === 0) {
+  const executorValue: unknown = executor
+  if (typeof executorValue !== 'object' || executorValue === null) {
+    throw new ReplaySimulationError('simulated replay executor must be an object')
+  }
+  const executorId = 'id' in executorValue ? executorValue.id : undefined
+  const executorEffects = 'effects' in executorValue ? executorValue.effects : undefined
+  if (typeof executorId !== 'string' || executorId.trim().length === 0) {
     throw new ReplaySimulationError('simulated replay executor id must be a non-empty string')
   }
-  if (executor.effects !== 'none') {
+  if (executorEffects !== 'none') {
     throw new ReplaySimulationError('simulated replay executor must declare effects: "none"')
   }
   const request = reconstructReplayRequest(events, requestHeaderSeq)
@@ -182,7 +219,7 @@ export async function simulateReplayRequest<Result>(
   const result = await executor.execute(request)
   return Object.freeze({
     mode: 'simulated',
-    executorId: executor.id,
+    executorId,
     request,
     result,
   })
@@ -207,9 +244,11 @@ export async function simulateReplayRequest<Result>(
  * `SessionStore.fork()` still requires the source session to be live. This
  * inspector never turns that condition into a stronger claim.
  *
- * `reproducible` remains unavailable because the current session format does
- * not snapshot the execution environment or external world state, and no
- * reproducible replay executor is shipped.
+ * `reproducible` remains unavailable until a reproducible executor exists.
+ * Request-scoped snapshot references can remove the two snapshot-presence
+ * blockers, while identity fingerprints never do. Evidence is atomic and
+ * replacement-based: the latest record for the latest request wins; malformed
+ * latest evidence fails closed instead of falling back to an older claim.
  *
  * @param events - Full current-format session log in sequence order.
  * @param boundary - Optional inclusive event seq to inspect through; omitted means the current log tail.
@@ -224,6 +263,17 @@ export function inspectReplayCapabilities(
   const lastTurnBoundary = prefix.findLast(event => event.type === 'turn/start' || event.type === 'turn/end')
   const stableForkBoundary = lastTurnBoundary?.type !== 'turn/start'
   const requestSnapshot = reconstructReplayRequest(prefix)
+  const reproducibility = requestSnapshot === undefined
+    ? undefined
+    : latestReproducibilityEvidence(prefix, requestSnapshot.requestHeaderSeq)
+  const reproducibleBlockers: ReplayBlockerCode[] = []
+  if (reproducibility?.evidence.executionEnvironmentSnapshot === undefined) {
+    reproducibleBlockers.push('EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED')
+  }
+  if (reproducibility?.evidence.externalStateSnapshot === undefined) {
+    reproducibleBlockers.push('EXTERNAL_STATE_NOT_SNAPSHOTTED')
+  }
+  reproducibleBlockers.push('REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED')
 
   const modes: Record<ReplayMode, ReplayCapability> = {
     transcript: capability('transcript', 'available', 'none'),
@@ -236,11 +286,7 @@ export function inspectReplayCapabilities(
     'live-fork': stableForkBoundary
       ? capability('live-fork', 'conditional', 'live-if-executed', ['LIVE_SOURCE_REQUIRED'])
       : capability('live-fork', 'unavailable', 'live-if-executed', ['OPEN_TURN', 'LIVE_SOURCE_REQUIRED']),
-    reproducible: capability('reproducible', 'unavailable', 'live-if-executed', [
-      'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED',
-      'EXTERNAL_STATE_NOT_SNAPSHOTTED',
-      'REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED',
-    ]),
+    reproducible: capability('reproducible', 'unavailable', 'live-if-executed', reproducibleBlockers),
   }
 
   return Object.freeze({
@@ -251,6 +297,10 @@ export function inspectReplayCapabilities(
       latestRequestHeaderSeq: requestSnapshot.requestHeaderSeq,
       requestHeader: requestSnapshot.header,
       requestSnapshot,
+    }),
+    ...(reproducibility === undefined ? {} : {
+      reproducibilityEvidenceSeq: reproducibility.seq,
+      reproducibilityEvidence: reproducibility.evidence,
     }),
     modes: Object.freeze(modes),
   })

@@ -8,7 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { LlmCallConfig, LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
-import type { AgentCancelCause, Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
+import type { AgentCancelCause, EpochHeader, ReplayReproducibilityEvidenceSink, Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 export type { AgentCancelCause } from '@deepseek-ai/dsh-session'
 import type { Inbox } from './inbox.ts'
 import type { InboxTarget } from './types.ts'
@@ -242,6 +242,25 @@ declare module '@deepseek-ai/cordis' {
      * @mode waterfall
     */
     'agent/request'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }, next: () => Promise<LlmCallConfig>): Promise<LlmCallConfig>
+    /**
+     * Collect already-available reproducibility evidence for one exact committed
+     * `request/header`, after canonical adapter defaults/system/tools are durable
+     * and before provider dispatch. This is a synchronous, non-vetoing
+     * notification: listeners add evidence through `sink` before returning.
+     * Returned promises are not awaited; late writes hit the sealed collector.
+     * Listener failures are contained and cannot change the request or block the
+     * provider call. Conflicting valid contributions are resolved fail-closed by
+     * the collector rather than by listener order.
+     * @param payload.agent - the agent whose request header was committed.
+     * @param payload.turn - the open turn number.
+     * @param payload.step - the step whose request is about to dispatch.
+     * @param payload.requestHeaderSeq - exact committed `request/header` seq.
+     * @param payload.header - exact frozen header snapshot stored at that seq.
+     * @param payload.sink - synchronous write-only evidence collector capability.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode emit
+     */
+    'agent/request-reproducibility-evidence'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; requestHeaderSeq: number; header: EpochHeader; sink: ReplayReproducibilityEvidenceSink }): void
     /**
      * Handle one failed model-request attempt before the loop retries or closes
      * its step. A listener returns `{ kind: 'retry' }` without calling `next()`
