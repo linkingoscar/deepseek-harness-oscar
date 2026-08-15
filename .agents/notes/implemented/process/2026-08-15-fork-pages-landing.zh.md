@@ -2,6 +2,8 @@
 
 Status: implemented
 
+[English](2026-08-15-fork-pages-landing.md) | 中文
+
 ## Problem
 
 仓库现有 GitHub Pages workflow 会把投影生成的 VitePress 文档直接发布到站点根路径。随着这个 fork 已经形成独立于 upstream 的工程方向、路线图和开发状态，Pages 根路径继续只表现为文档入口，已经不能准确表达仓库定位。若另起一套站点并替换现有投影文档，又会复制文档内容并削弱已有的 `doc-sync` 发布路径。
