@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-08-15-fork-pages-landing.zh.md)
+
 ## Problem
 
 The repository's GitHub Pages workflow publishes the projected VitePress documentation directly at the site root. That makes the Pages root behave like a documentation entry point even though the fork now has its own engineering direction, roadmap, and development status that differ from upstream. Replacing the projected documentation tree with a separate site would duplicate documentation and weaken the existing `doc-sync` publication path.
