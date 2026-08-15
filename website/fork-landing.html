@@ -3,437 +3,286 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DeepSeek Harness — Oscar Fork · Evidence before interpretation</title>
-<meta name="description" content="DeepSeek Harness engineering fork focused on auditable execution, reproducible replay, diagnostics, and benchmark validation.">
-<meta name="theme-color" content="#06070c">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<meta name="description" content="DeepSeek Harness Oscar Fork — auditable execution, reproducible replay, behavior-neutral diagnostics, and validated benchmark infrastructure.">
+<meta name="theme-color" content="#07080d">
+<title>DeepSeek Harness — Oscar Fork · 3/3 workstreams landed</title>
 <style>
-:root{
-  --bg:#06070c;--bg2:#090b13;--panel:#0d101a;--panel2:#111522;
-  --line:rgba(232,235,255,.085);--line2:rgba(232,235,255,.16);
-  --tx:#edf0fb;--mut:#9aa1b7;--dim:#626a82;
-  --vio:#8f7bff;--vio2:#b6aaff;--mint:#5cf0bf;--amber:#ffc36b;--red:#ff7482;--cyan:#72d7ff;
-  --display:'Space Grotesk','Noto Sans SC',sans-serif;
-  --body:'Noto Sans SC',system-ui,sans-serif;
-  --mono:'JetBrains Mono','Noto Sans SC',monospace;
-  --header:66px;
+:root {
+  --bg:#07080d;
+  --bg2:#0a0c14;
+  --panel:#0f121d;
+  --panel2:#121725;
+  --line:rgba(235,238,255,.09);
+  --line2:rgba(235,238,255,.18);
+  --text:#eef1fb;
+  --muted:#9ba3b9;
+  --dim:#656d83;
+  --violet:#927fff;
+  --violet2:#b9adff;
+  --mint:#62efc1;
+  --amber:#ffc76f;
+  --cyan:#75d9ff;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;
+  --header:68px;
 }
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--tx);font-family:var(--body);font-size:16px;line-height:1.75;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.68;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-button{font:inherit}
-::selection{background:var(--vio);color:#090a10}
-.wrap{width:min(1220px,calc(100% - 40px));margin:0 auto}
-.mono{font-family:var(--mono)}
-.noise{position:fixed;inset:0;z-index:900;pointer-events:none;opacity:.045;mix-blend-mode:soft-light;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E")}
-#progress{position:fixed;left:0;top:0;width:0;height:2px;background:linear-gradient(90deg,var(--vio),var(--mint));z-index:1000}
-header{position:fixed;inset:0 0 auto;height:var(--header);z-index:800;background:rgba(6,7,12,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
-.hd{height:100%;display:flex;align-items:center;gap:26px}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;letter-spacing:.02em}
-.brand-mark{display:grid;place-items:center;width:28px;height:28px;border:1px solid var(--line2);border-radius:8px;background:linear-gradient(135deg,rgba(143,123,255,.22),rgba(92,240,191,.08));font-family:var(--mono);font-size:11px;color:var(--mint)}
-.brand b{color:var(--vio2)}
-.badge{font-family:var(--mono);font-size:9px;letter-spacing:.15em;color:var(--mint);border:1px solid rgba(92,240,191,.32);border-radius:99px;padding:3px 8px}
-nav{display:flex;align-items:center;gap:24px;margin-left:auto}
-nav a{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--mut);transition:color .2s}
-nav a:hover{color:var(--tx)}
-.gh{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line2);border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;transition:transform .2s,border-color .2s,background .2s}
-.gh:hover{transform:translateY(-2px);border-color:var(--vio);background:rgba(143,123,255,.08)}
-@media(max-width:900px){nav{display:none}}
-
-section{position:relative;padding:clamp(82px,11vh,132px) 0}
-#hero{min-height:100vh;display:flex;align-items:center;padding-top:calc(var(--header) + 48px);overflow:hidden}
-#hero::before{content:'';position:absolute;inset:0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:72px 72px;opacity:.36;mask-image:radial-gradient(ellipse 85% 75% at 35% 35%,#000 30%,transparent 78%)}
-#fx{position:absolute;inset:0;z-index:0}
-.hero{position:relative;z-index:2;display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(30px,5vw,64px);align-items:center}
-.eyebrow,.s-idx{font-family:var(--mono);font-size:11px;letter-spacing:.23em;color:var(--mint);display:flex;align-items:center;gap:12px}
-.eyebrow{margin-bottom:22px}
-.eyebrow::before,.s-idx::after{content:'';display:block;width:34px;height:1px;background:currentColor;opacity:.7}
-.hero h1{font-family:var(--display);font-weight:700;letter-spacing:-.045em;line-height:.93;font-size:clamp(3.5rem,8.7vw,7.2rem);margin-bottom:28px}
-.hero h1 span{display:block}
-.hero h1 .outline{color:transparent;-webkit-text-stroke:1.5px var(--vio);text-stroke:1.5px var(--vio)}
-.hero-sub{max-width:650px;color:var(--mut);font-size:clamp(15px,1.3vw,18px);margin-bottom:32px}
-.hero-sub strong{color:var(--tx)}
-.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:40px}
-.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 21px;border-radius:9px;font-size:14px;font-weight:700;transition:transform .22s,box-shadow .22s,border-color .22s,background .22s}
-.btn.primary{background:var(--vio);color:#090a10}
-.btn.primary:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(143,123,255,.32)}
-.btn.secondary{border:1px solid var(--line2)}
-.btn.secondary:hover{transform:translateY(-3px);border-color:var(--vio);background:rgba(143,123,255,.08)}
-.hero-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line)}
-.hero-meta div{padding:16px 18px 0 0;margin-right:18px;border-right:1px solid var(--line)}
-.hero-meta div:last-child{border-right:none}
-.hero-meta b{display:block;font-family:var(--display);font-size:22px;line-height:1.2}
-.hero-meta span{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--dim)}
-
-.console-wrap{position:relative}
-.console-wrap::before{content:'';position:absolute;inset:-48px;background:radial-gradient(closest-side,rgba(143,123,255,.18),transparent 70%);filter:blur(8px);z-index:-1}
-.console{background:linear-gradient(180deg,#101421,#090c14);border:1px solid var(--line2);border-radius:14px;overflow:hidden;box-shadow:0 32px 90px rgba(0,0,0,.55)}
-.console-head{display:flex;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.018)}
-.dots{display:flex;gap:6px}.dots i{display:block;width:9px;height:9px;border-radius:50%}.dots i:nth-child(1){background:#ff6259}.dots i:nth-child(2){background:#ffc04f}.dots i:nth-child(3){background:#35d36f}
-.console-title{font-family:var(--mono);font-size:10px;color:var(--mut);letter-spacing:.08em}
-.live{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.16em;color:var(--mint);display:flex;align-items:center;gap:7px}
-.live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--mint);animation:pulse 1.4s infinite}
-.console-body{min-height:360px;padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:1.9}
-.log{display:grid;grid-template-columns:152px 1fr;gap:12px;padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.045)}
-.log:last-child{border-bottom:none}
-.log .k{color:var(--dim)}.log .v{color:#d9dded}.log .ok{color:var(--mint)}.log .warn{color:var(--amber)}.log .vio{color:var(--vio2)}
-.console-foot{display:flex;gap:18px;padding:10px 17px;border-top:1px solid var(--line);font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--dim)}
-.console-foot .right{margin-left:auto;color:var(--mint)}
-@keyframes pulse{50%{opacity:.25}}
-
-.ticker{position:absolute;left:0;right:0;bottom:0;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.012)}
-.ticker-track{display:inline-flex;white-space:nowrap;padding:12px 0;font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--mut);animation:tick 34s linear infinite}
-.ticker-track em{font-style:normal;color:var(--vio);margin:0 22px}
-@keyframes tick{to{transform:translateX(-50%)}}
-
-.s-head{margin-bottom:clamp(38px,6vh,62px)}
-.s-idx{color:var(--vio2);margin-bottom:13px}
-.s-head h2{font-family:var(--display);font-size:clamp(2rem,4.6vw,3.7rem);line-height:1.05;letter-spacing:-.03em}
-.s-note{max-width:720px;color:var(--mut);margin-top:14px;font-size:15px}
-[data-rv]{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.75,.2,1)}
-[data-rv].in{opacity:1;transform:none}
-
-#principles{background:linear-gradient(180deg,var(--bg),var(--bg2))}
-.principles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.pcard{position:relative;min-height:235px;padding:26px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel2),var(--panel));overflow:hidden;transition:transform .25s,border-color .25s}
-.pcard:hover{transform:translateY(-5px);border-color:rgba(143,123,255,.4)}
-.pcard .num{font-family:var(--mono);font-size:10px;color:var(--vio2);letter-spacing:.16em}
-.pcard h3{font-size:18px;margin:22px 0 9px}
-.pcard p{font-size:13.5px;color:var(--mut)}
-.pcard::after{content:'+';position:absolute;right:16px;top:11px;font-family:var(--mono);color:var(--dim)}
-
-#landed{background:var(--bg2)}
-.landed-grid{display:grid;grid-template-columns:320px 1fr;gap:clamp(28px,5vw,68px);align-items:start}
-.status-card{position:sticky;top:calc(var(--header) + 28px);border:1px solid var(--line2);border-radius:15px;padding:28px;background:var(--panel)}
-.status-card .big{font-family:var(--display);font-size:72px;font-weight:700;line-height:1;color:var(--mint)}
-.status-card .label{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--dim);margin:10px 0 18px}
-.status-card p{font-size:13.5px;color:var(--mut)}
-.status-card .stamp{display:inline-flex;margin-top:20px;border:1px solid rgba(92,240,191,.25);color:var(--mint);border-radius:99px;padding:4px 10px;font-family:var(--mono);font-size:9px;letter-spacing:.13em}
-.landed-list{display:flex;flex-direction:column;gap:12px}
-.landed-item{display:grid;grid-template-columns:145px 1fr auto;gap:18px;align-items:start;padding:20px 22px;border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:transform .2s,border-color .2s}
-.landed-item:hover{transform:translateX(4px);border-color:rgba(92,240,191,.27)}
-.landed-item code{font-family:var(--mono);font-size:10px;color:var(--vio2);background:rgba(143,123,255,.08);padding:4px 8px;border-radius:6px}
-.landed-item h3{font-size:15px;margin-bottom:5px}
-.landed-item p{font-size:12.5px;color:var(--mut)}
-.state{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--mint);border:1px solid rgba(92,240,191,.28);border-radius:99px;padding:3px 8px;white-space:nowrap}
-
-#workstreams{background:var(--bg)}
-.stack{display:block}
-.work{position:sticky;top:calc(var(--header) + 14px + var(--i)*18px);min-height:430px;margin-bottom:30px;padding:clamp(26px,4vw,44px);border:1px solid var(--line2);border-radius:17px;background:linear-gradient(180deg,var(--panel2),#0a0d16);box-shadow:0 -18px 50px rgba(0,0,0,.42);overflow:hidden}
-.work::before,.work::after{content:'+';position:absolute;font-family:var(--mono);color:var(--dim)}.work::before{left:16px;top:11px}.work::after{right:16px;bottom:10px}
-.work-top{display:flex;align-items:center;gap:10px;margin-bottom:32px}
-.branch{font-family:var(--mono);font-size:11px;color:var(--vio2);letter-spacing:.03em}
-.open{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--amber);letter-spacing:.14em;border:1px solid rgba(255,195,107,.3);border-radius:99px;padding:4px 9px}
-.work-grid{display:grid;grid-template-columns:.85fr 1.15fr;gap:clamp(30px,5vw,70px)}
-.work h3{font-family:var(--display);font-size:clamp(1.8rem,3.4vw,3rem);line-height:1.05;letter-spacing:-.03em;margin-bottom:16px}
-.work .desc{color:var(--mut);max-width:500px}
-.targets{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.target{border:1px solid var(--line);border-radius:10px;padding:16px;background:rgba(255,255,255,.015)}
-.target b{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--mint);margin-bottom:5px}
-.target span{font-size:12px;color:var(--mut)}
-
-#roadmap{background:linear-gradient(180deg,var(--bg),var(--bg2))}
-.road{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;position:relative}
-.road::before{content:'';position:absolute;left:5%;right:5%;top:28px;height:1px;background:linear-gradient(90deg,var(--vio),var(--mint))}
-.phase{position:relative;padding-top:62px}
-.phase::before{content:'';position:absolute;top:22px;left:22px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--vio);box-shadow:0 0 0 7px rgba(143,123,255,.08)}
-.phase:nth-child(4)::before{border-color:var(--mint)}
-.phase-card{height:100%;padding:22px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-.phase-card .p{font-family:var(--mono);font-size:10px;color:var(--vio2);letter-spacing:.16em}
-.phase-card h3{font-size:17px;margin:10px 0 9px}.phase-card p{font-size:12.5px;color:var(--mut)}
-
-#model{background:var(--bg2)}
-.pipeline{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:stretch}
-.node{position:relative;min-height:160px;padding:19px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-.node:not(:last-child)::after{content:'→';position:absolute;right:-13px;top:50%;transform:translateY(-50%);z-index:2;color:var(--dim);font-family:var(--mono)}
-.node .tag{font-family:var(--mono);font-size:9px;color:var(--vio2);letter-spacing:.14em}
-.node h3{font-size:14px;margin:15px 0 8px}.node p{font-size:11.5px;color:var(--mut)}
-.rejection{margin-top:18px;border-left:2px solid var(--amber);padding:10px 14px;background:rgba(255,195,107,.045);font-family:var(--mono);font-size:10px;color:#c9b58d}
-.non-goals{display:flex;flex-wrap:wrap;gap:9px;margin-top:24px}.non-goals span{font-family:var(--mono);font-size:10px;color:var(--mut);border:1px solid var(--line2);border-radius:99px;padding:6px 11px}
-.non-goals span::before{content:'×';color:var(--red);margin-right:7px}
-
-#start{background:var(--bg)}
-.start-grid{display:grid;grid-template-columns:.85fr 1.15fr;gap:clamp(26px,5vw,64px);align-items:start}
-.links{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.link-card{display:block;padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:transform .2s,border-color .2s}
-.link-card:hover{transform:translateY(-4px);border-color:var(--vio)}
-.link-card b{display:block;font-size:15px;margin-bottom:5px}.link-card span{font-size:12px;color:var(--mut)}
-.codebox{background:#090c14;border:1px solid var(--line2);border-radius:14px;overflow:hidden}
-.codehead{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.12em}
-.codehead span:last-child{margin-left:auto;color:var(--mint)}
-pre{padding:20px 22px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.9;color:#d8dcef}
-pre .c{color:var(--dim)}pre .cmd{color:var(--mint)}pre .path{color:var(--vio2)}
-
-footer{border-top:1px solid var(--line);padding:58px 0 30px;overflow:hidden}
-.marquee{display:flex;width:max-content;white-space:nowrap;font-family:var(--display);font-size:clamp(3rem,8vw,7rem);line-height:1;font-weight:700;color:transparent;-webkit-text-stroke:1px rgba(237,240,251,.18);animation:marquee 50s linear infinite;margin-bottom:48px}
-.marquee span{padding-right:52px}
-@keyframes marquee{to{transform:translateX(-50%)}}
-.foot{display:flex;justify-content:space-between;gap:30px;align-items:flex-end}
-.foot p{max-width:600px;color:var(--mut);font-size:13px}.foot small{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.08em}
-.foot a{color:var(--vio2)}
-
-@media(max-width:1020px){
-  .hero{grid-template-columns:1fr}.console-wrap{max-width:700px}
-  .principles{grid-template-columns:1fr 1fr}
-  .landed-grid{grid-template-columns:1fr}.status-card{position:static}
-  .work-grid{grid-template-columns:1fr}
-  .road{grid-template-columns:1fr 1fr}.road::before{display:none}.phase{padding-top:0}.phase::before{display:none}
-  .pipeline{grid-template-columns:1fr 1fr 1fr}.node:nth-child(3)::after{display:none}
-  .start-grid{grid-template-columns:1fr}
-}
-@media(max-width:680px){
-  .wrap{width:min(100% - 28px,1220px)}
-  .hero h1{font-size:clamp(3rem,16vw,5.2rem)}
-  .hero-meta{grid-template-columns:1fr}.hero-meta div{border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px}
-  .principles,.targets,.road,.links,.pipeline{grid-template-columns:1fr}
-  .node::after{display:none!important}
-  .landed-item{grid-template-columns:1fr}.state{justify-self:start}
-  .work{top:calc(var(--header) + 8px + var(--i)*8px)}
-  .foot{align-items:flex-start;flex-direction:column}
-}
-@media(prefers-reduced-motion:reduce){
-  html{scroll-behavior:auto}
-  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-  [data-rv]{opacity:1!important;transform:none!important}
-  .ticker-track,.marquee{animation:none!important}
-}
+code{font-family:var(--mono)}
+::selection{background:var(--violet);color:#08090e}
+.wrap{width:min(1180px,calc(100% - 40px));margin:0 auto}
+#progress{position:fixed;left:0;top:0;width:0;height:2px;background:linear-gradient(90deg,var(--violet),var(--mint));z-index:1000}
+header{position:fixed;z-index:900;left:0;right:0;top:0;height:var(--header);border-bottom:1px solid var(--line);background:rgba(7,8,13,.82);backdrop-filter:blur(16px)}
+.header-inner{height:100%;display:flex;align-items:center;gap:24px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.01em}
+.mark{width:30px;height:30px;border:1px solid var(--line2);border-radius:9px;display:grid;place-items:center;font:700 10px var(--mono);color:var(--mint);background:linear-gradient(135deg,rgba(146,127,255,.22),rgba(98,239,193,.08))}
+.brand b{color:var(--violet2)}
+.tag{font:700 9px var(--mono);letter-spacing:.13em;padding:4px 8px;border:1px solid rgba(98,239,193,.3);border-radius:999px;color:var(--mint)}
+nav{display:flex;gap:23px;margin-left:auto}
+nav a{font:600 11px var(--mono);letter-spacing:.05em;color:var(--muted)}
+nav a:hover{color:var(--text)}
+.github{border:1px solid var(--line2);border-radius:9px;padding:8px 13px;font-weight:750;font-size:12px}
+.github:hover{border-color:var(--violet)}
+section{padding:96px 0}
+.hero{min-height:100vh;display:flex;align-items:center;padding-top:calc(var(--header) + 48px);position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:72px 72px;opacity:.28;mask-image:radial-gradient(ellipse 82% 75% at 40% 38%,#000 25%,transparent 80%)}
+.hero::after{content:"";position:absolute;width:640px;height:640px;border-radius:50%;right:-180px;top:60px;background:radial-gradient(circle,rgba(146,127,255,.16),transparent 68%);filter:blur(16px)}
+.hero-grid{position:relative;z-index:2;display:grid;grid-template-columns:1.05fr .95fr;gap:58px;align-items:center}
+.eyebrow,.index{font:700 11px var(--mono);letter-spacing:.19em;color:var(--mint)}
+h1{font-size:clamp(3.6rem,8vw,7rem);line-height:.91;letter-spacing:-.055em;margin:20px 0 28px;max-width:820px}
+h1 span{display:block}
+h1 .outline{color:transparent;-webkit-text-stroke:1.4px var(--violet)}
+.lead{max-width:700px;color:var(--muted);font-size:clamp(15px,1.4vw,18px)}
+.lead strong{color:var(--text)}
+.actions{display:flex;gap:11px;flex-wrap:wrap;margin:30px 0 38px}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:9px;padding:12px 18px;font-weight:750;font-size:13px;border:1px solid var(--line2)}
+.btn.primary{border-color:transparent;background:var(--violet);color:#08090e}
+.btn:hover{transform:translateY(-2px)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
+.metric{padding:18px 16px 0 0;margin-right:16px;border-right:1px solid var(--line)}
+.metric:last-child{border-right:0}
+.metric b{display:block;font-size:25px;line-height:1.1}
+.metric span{font:650 9px var(--mono);letter-spacing:.13em;color:var(--dim)}
+.terminal{border:1px solid var(--line2);border-radius:15px;overflow:hidden;background:linear-gradient(180deg,#101522,#090c14);box-shadow:0 28px 90px rgba(0,0,0,.55)}
+.term-head{display:flex;align-items:center;gap:7px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.dot{width:9px;height:9px;border-radius:50%;background:#ff665e}.dot:nth-child(2){background:#ffc34f}.dot:nth-child(3){background:#39d877}
+.term-title{margin-left:7px;font:600 10px var(--mono);color:var(--muted)}
+.term-live{margin-left:auto;font:700 9px var(--mono);letter-spacing:.12em;color:var(--mint)}
+.term-body{padding:18px 19px;font:12px/1.85 var(--mono)}
+.row{display:grid;grid-template-columns:155px 1fr;gap:12px;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.045)}
+.row:last-child{border-bottom:0}
+.k{color:var(--dim)}.ok{color:var(--mint)}.vio{color:var(--violet2)}.warn{color:var(--amber)}
+.term-foot{display:flex;gap:16px;padding:10px 15px;border-top:1px solid var(--line);font:650 9px var(--mono);letter-spacing:.08em;color:var(--dim)}
+.term-foot .right{margin-left:auto;color:var(--mint)}
+.section-head{margin-bottom:46px}
+.index{color:var(--violet2);margin-bottom:10px}
+h2{font-size:clamp(2.1rem,4.8vw,3.7rem);line-height:1.04;letter-spacing:-.035em;margin:0}
+.section-note{max-width:760px;color:var(--muted);font-size:15px;margin-top:14px}
+.summary{background:linear-gradient(180deg,var(--bg),var(--bg2))}
+.summary-grid{display:grid;grid-template-columns:300px 1fr;gap:56px;align-items:start}
+.status{position:sticky;top:calc(var(--header) + 28px);border:1px solid var(--line2);border-radius:15px;padding:27px;background:var(--panel)}
+.status .big{font-size:74px;font-weight:850;line-height:.95;color:var(--mint);letter-spacing:-.05em}
+.status .label{font:700 10px var(--mono);letter-spacing:.16em;color:var(--dim);margin:10px 0 17px}
+.status p{color:var(--muted);font-size:13px}
+.stamp{display:inline-flex;margin-top:18px;border:1px solid rgba(98,239,193,.27);color:var(--mint);border-radius:999px;padding:4px 9px;font:700 9px var(--mono);letter-spacing:.11em}
+.cards{display:flex;flex-direction:column;gap:13px}
+.card{border:1px solid var(--line);border-radius:14px;padding:23px;background:var(--panel);display:grid;grid-template-columns:150px 1fr auto;gap:20px;align-items:start}
+.card:hover{border-color:rgba(98,239,193,.28);transform:translateX(3px)}
+.branch{font:650 10px var(--mono);color:var(--violet2);word-break:break-word}
+.card h3{margin:0 0 7px;font-size:17px}
+.card p{margin:0;color:var(--muted);font-size:13px}
+.state{font:750 9px var(--mono);letter-spacing:.12em;color:var(--mint);border:1px solid rgba(98,239,193,.28);border-radius:999px;padding:4px 8px;white-space:nowrap}
+.details{background:var(--bg2)}
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.detail{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel2),var(--panel));padding:25px;min-height:280px}
+.detail .num{font:700 10px var(--mono);letter-spacing:.13em;color:var(--violet2)}
+.detail h3{font-size:20px;margin:22px 0 10px}
+.detail p{font-size:13.5px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
+.chip{font:650 9px var(--mono);border:1px solid var(--line2);border-radius:999px;padding:4px 8px;color:#cdd2e4}
+.proof{background:var(--bg)}
+.proof-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.proof-card{border:1px solid var(--line);border-radius:14px;padding:26px;background:var(--panel)}
+.proof-card h3{margin:0 0 10px;font-size:18px}
+.proof-card p{margin:0;color:var(--muted);font-size:13.5px}
+.proof-card strong{color:var(--text)}
+.ci{margin-top:26px;border:1px solid rgba(98,239,193,.24);border-radius:14px;background:rgba(98,239,193,.045);padding:21px 24px;display:flex;gap:20px;align-items:center}
+.ci b{font-size:30px;color:var(--mint);white-space:nowrap}.ci span{color:var(--muted);font-size:13.5px}
+.next{background:linear-gradient(180deg,var(--bg2),var(--bg))}
+.road{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.phase{border-top:1px solid var(--line2);padding-top:20px}
+.phase .p{font:700 10px var(--mono);letter-spacing:.14em;color:var(--mint)}
+.phase h3{font-size:18px;margin:11px 0 8px}.phase p{font-size:13px;color:var(--muted)}
+.guardrail{margin-top:44px;border:1px solid rgba(255,199,111,.25);background:rgba(255,199,111,.035);border-radius:15px;padding:25px}
+.guardrail b{color:var(--amber)}.guardrail p{margin:8px 0 0;color:var(--muted);font-size:13.5px}
+.links-section{padding-top:72px}
+.links{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.link-card{border:1px solid var(--line);border-radius:13px;padding:21px;background:var(--panel)}
+.link-card:hover{border-color:var(--violet)}
+.link-card small{display:block;font:700 9px var(--mono);letter-spacing:.12em;color:var(--dim);margin-bottom:8px}
+.link-card b{font-size:15px}.link-card p{font-size:12.5px;color:var(--muted);margin:7px 0 0}
+footer{border-top:1px solid var(--line);padding:38px 0 46px}
+.foot{display:flex;justify-content:space-between;gap:30px;color:var(--muted);font-size:12px}.foot code{color:var(--violet2)}
+[data-reveal]{opacity:0;transform:translateY(18px);transition:opacity .65s ease,transform .65s ease}
+[data-reveal].in{opacity:1;transform:none}
+@media(max-width:980px){nav{display:none}.hero-grid{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.status{position:static}.detail-grid,.road,.links{grid-template-columns:1fr 1fr}.proof-grid{grid-template-columns:1fr}}
+@media(max-width:660px){.wrap{width:min(100% - 28px,1180px)}section{padding:76px 0}.tag{display:none}.github{margin-left:auto}.metrics{grid-template-columns:1fr}.metric{border-right:0;border-bottom:1px solid var(--line);padding-bottom:12px}.row{grid-template-columns:1fr;gap:2px}.card{grid-template-columns:1fr}.state{justify-self:start}.detail-grid,.road,.links{grid-template-columns:1fr}.ci{align-items:flex-start;flex-direction:column}.foot{flex-direction:column}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}[data-reveal]{opacity:1!important;transform:none!important}}
 </style>
 </head>
 <body>
-<div class="noise" aria-hidden="true"></div>
 <div id="progress" aria-hidden="true"></div>
-
 <header>
-  <div class="wrap hd">
-    <a class="brand" href="#hero"><span class="brand-mark">DSH</span><span>HARNESS <b>//</b> OSCAR</span><span class="badge">ENGINEERING FORK</span></a>
+  <div class="wrap header-inner">
+    <a class="brand" href="#top"><span class="mark">DSH</span><span>HARNESS <b>//</b> OSCAR</span><span class="tag">ENGINEERING FORK</span></a>
     <nav>
-      <a href="#principles">原则</a>
-      <a href="#landed">进度</a>
-      <a href="#workstreams">开发线</a>
-      <a href="#roadmap">Roadmap</a>
+      <a href="#status">状态</a>
+      <a href="#workstreams">三条开发线</a>
+      <a href="#proof">证据能力</a>
+      <a href="#next">下一阶段</a>
       <a href="./guide/">文档</a>
     </nav>
-    <a class="gh" href="https://github.com/linkingoscar/deepseek-harness-oscar">GitHub ↗</a>
+    <a class="github" href="https://github.com/linkingoscar/deepseek-harness-oscar">GitHub ↗</a>
   </div>
 </header>
 
-<main>
-<section id="hero">
-  <canvas id="fx" aria-hidden="true"></canvas>
-  <div class="wrap hero">
-    <div>
-      <p class="eyebrow" data-rv>DEEPSEEK HARNESS · ENGINEERING FORK</p>
-      <h1>
-        <span id="decode1" data-text="EVIDENCE">EVIDENCE</span>
-        <span class="outline" id="decode2" data-text="BEFORE">BEFORE</span>
-        <span>INTERPRETATION.</span>
-      </h1>
-      <p class="hero-sub" data-rv>这不是另一个“套壳 coding CLI”。这个 fork 把 DeepSeek Harness 当作一个可演进的 agent runtime substrate，重点强化<strong>执行证据、交付记账、可复现 replay、诊断能力和可验证 benchmark 基础设施</strong>。</p>
-      <div class="hero-actions" data-rv>
-        <a class="btn primary" href="#landed">查看当前进度 ↓</a>
-        <a class="btn secondary" href="./guide/">阅读项目文档</a>
-        <a class="btn secondary" href="https://github.com/linkingoscar/deepseek-harness-oscar/blob/master/README.md">README ↗</a>
+<main id="top">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div data-reveal>
+      <div class="eyebrow">DEEPSEEK HARNESS · OSCAR FORK · 2026.08.15</div>
+      <h1><span>EVIDENCE</span><span class="outline">BEFORE</span><span>INTERPRETATION.</span></h1>
+      <p class="lead">这个 fork 不把 DeepSeek Harness 当成另一个套壳 coding CLI，而是把它当作一个可演进的 agent runtime substrate。第一阶段的三条并行开发线已经全部进入 <strong>master</strong>：replay reproducibility、execution diagnostics、offline benchmark validation。</p>
+      <div class="actions">
+        <a class="btn primary" href="#workstreams">查看 3/3 已交付 ↓</a>
+        <a class="btn" href="./guide/">阅读项目文档</a>
+        <a class="btn" href="https://github.com/linkingoscar/deepseek-harness-oscar/blob/master/README.zh.md">README ↗</a>
       </div>
-      <div class="hero-meta" data-rv>
-        <div><b>8</b><span>LANDED ITEMS</span></div>
-        <div><b>3</b><span>ACTIVE WORKSTREAMS</span></div>
-        <div><b>2026.08.15</b><span>STATUS SNAPSHOT</span></div>
+      <div class="metrics">
+        <div class="metric"><b>3 / 3</b><span>PARALLEL WORKSTREAMS LANDED</span></div>
+        <div class="metric"><b>35 / 35</b><span>LATEST STATIC GATES PASSED</span></div>
+        <div class="metric"><b>master</b><span>INTEGRATION BASELINE</span></div>
       </div>
     </div>
 
-    <div class="console-wrap" data-rv>
-      <div class="console">
-        <div class="console-head">
-          <span class="dots"><i></i><i></i><i></i></span>
-          <span class="console-title">trajectory://evidence.inspect</span>
-          <span class="live">AUDITABLE</span>
-        </div>
-        <div class="console-body">
-          <div class="log"><span class="k">execution.status</span><span class="v ok">succeeded</span></div>
-          <div class="log"><span class="k">delivery.status</span><span class="v warn">explicitly accounted</span></div>
-          <div class="log"><span class="k">delivery.bytes</span><span class="v ok">canonical JSON measurement</span></div>
-          <div class="log"><span class="k">replay.snapshot</span><span class="v vio">historical request reconstruction</span></div>
-          <div class="log"><span class="k">replay.simulated</span><span class="v ok">executor-driven · effect-free seam</span></div>
-          <div class="log"><span class="k">diagnostics.next</span><span class="v">peak concurrency · orphan dispatch · per-tool summary</span></div>
-          <div class="log"><span class="k">benchmark.policy</span><span class="v warn">no claim without validated result pairs</span></div>
-        </div>
-        <div class="console-foot"><span>MODEL-VISIBLE ⇔ LOGGED</span><span>EXECUTION ≠ DELIVERY</span><span class="right">✓ EVIDENCE FIRST</span></div>
+    <div class="terminal" data-reveal>
+      <div class="term-head"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span class="term-title">evidence://fork.status</span><span class="term-live">LANDED</span></div>
+      <div class="term-body">
+        <div class="row"><span class="k">replay.reproducibility</span><span class="ok">merged · request-scoped evidence</span></div>
+        <div class="row"><span class="k">execution.diagnostics</span><span class="ok">merged · behavior-neutral summary</span></div>
+        <div class="row"><span class="k">benchmark.validation</span><span class="ok">merged · deterministic offline replay</span></div>
+        <div class="row"><span class="k">deliveryRejected</span><span class="vio">first-class diagnostic evidence</span></div>
+        <div class="row"><span class="k">byte.accounting</span><span class="vio">measured / unmeasured kept distinct</span></div>
+        <div class="row"><span class="k">benchmark.policy</span><span class="warn">no synthetic evidence · no automatic ranking</span></div>
+        <div class="row"><span class="k">integration.static</span><span class="ok">35 passed · 0 failed · 0 skipped</span></div>
       </div>
-    </div>
-  </div>
-  <div class="ticker" aria-hidden="true">
-    <div class="ticker-track" id="ticker">
-      <span>EVIDENCE BEFORE INTERPRETATION <em>◆</em> EXECUTION ≠ DELIVERY <em>◆</em> REPLAY IS A CONTRACT <em>◆</em> MEASUREMENT SHOULD BE BEHAVIOR-NEUTRAL <em>◆</em> VALIDATE THE HARNESS BEFORE THE SCORE <em>◆</em> EVERYTHING IS A PLUGIN <em>◆</em></span>
+      <div class="term-foot"><span>EXECUTION ≠ DELIVERY</span><span>REPLAY IS A CONTRACT</span><span class="right">✓ EVIDENCE FIRST</span></div>
     </div>
   </div>
 </section>
 
-<section id="principles">
+<section class="summary" id="status">
   <div class="wrap">
-    <div class="s-head" data-rv>
-      <p class="s-idx">01 / ENGINEERING PRINCIPLES</p>
-      <h2>Fork 的开发思想</h2>
-      <p class="s-note">保留上游 “Everything is a Plugin” 的架构，把增量集中在可审计执行与可复现实验上，而不是重新造一个 privileged core。</p>
+    <div class="section-head" data-reveal>
+      <div class="index">01 / CURRENT STATUS</div>
+      <h2>并行开发阶段已经收口。</h2>
+      <p class="section-note">之前首页把三条 branch 标成 <code>ACTIVE SCOPE</code>。现在它们都已经完成、验证并合并，项目进入 integration / validation / evidence-driven experimentation 阶段。</p>
     </div>
-    <div class="principles">
-      <article class="pcard" data-rv><span class="num">01 / EVIDENCE</span><h3>Evidence before interpretation</h3><p>先持久化足以解释一次 run 的事实，再做诊断、归因和性能结论。</p></article>
-      <article class="pcard" data-rv><span class="num">02 / DELIVERY</span><h3>Execution 与 delivery 分开记</h3><p>工具执行成功，不代表结果一定被接纳、传回模型或被完整计量。证据必须保留这些差异。</p></article>
-      <article class="pcard" data-rv><span class="num">03 / OBSERVE</span><h3>诊断默认不改变行为</h3><p>Accounting 和 DevTools 优先作为 behavior-neutral observation layer，避免“为了看清运行时而改了运行时”。</p></article>
-      <article class="pcard" data-rv><span class="num">04 / REPLAY</span><h3>Replay 是明确的语义契约</h3><p>Live fork、reproducible replay 与 effect-free simulated replay 不混为一个按钮。</p></article>
-      <article class="pcard" data-rv><span class="num">05 / BENCHMARK</span><h3>先验证 benchmark harness</h3><p>Pair schema、fixture、deterministic replay、consistency check 和 failure taxonomy 比“先给一个分数”更重要。</p></article>
-      <article class="pcard" data-rv><span class="num">06 / UPSTREAM</span><h3>小而清晰的扩展 seam</h3><p>尽量沿现有 package / plugin seam 演进，让改动可测试、可审查，并保持 upstream-friendly。</p></article>
-    </div>
-  </div>
-</section>
-
-<section id="landed">
-  <div class="wrap">
-    <div class="s-head" data-rv>
-      <p class="s-idx">02 / LANDED ON MASTER</p>
-      <h2>已经落地的基础</h2>
-      <p class="s-note">下面只列已经进入 <code>master</code> 的能力。开发中的 workstream 单独放在下一节，不提前宣称结果。</p>
-    </div>
-    <div class="landed-grid">
-      <aside class="status-card" data-rv>
-        <div class="big">8</div>
-        <div class="label">LANDED ITEMS</div>
-        <p>当前主线已经形成 replay + accounting + delivery admission + DevTools 的第一组闭环基础。</p>
-        <span class="stamp">SNAPSHOT · 2026-08-15</span>
+    <div class="summary-grid">
+      <aside class="status" data-reveal>
+        <div class="big">3/3</div>
+        <div class="label">WORKSTREAMS MERGED</div>
+        <p>Replay、Diagnostics、Benchmark Validation 已经形成第一阶段闭环。这里的状态只描述已经进入 <code>master</code> 的事实。</p>
+        <span class="stamp">STATUS SNAPSHOT · 2026-08-15</span>
       </aside>
-      <div class="landed-list">
-        <article class="landed-item" data-rv><code>REPLAY</code><div><h3>Replay capability semantics</h3><p>把不同 replay 模式的 effect 与 snapshot 语义明确区分。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>SNAPSHOT</code><div><h3>Historical request reconstruction</h3><p>从历史 session evidence 重建 canonical request snapshot。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>SIMULATE</code><div><h3>Executor-driven simulated replay</h3><p>通过 caller-supplied executor 提供 effect-free simulated replay seam。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>BYTES</code><div><h3>Code Mode delivery-byte accounting</h3><p>记录成功 sub-dispatch 交付结果的 canonical JSON bytes，并保留 legacy unknown evidence。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>ADMISSION</code><div><h3>Delivery admission accounting</h3><p>将执行成功与结果交付/接纳分开，并记录 explicit delivery rejection evidence。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>BUDGET</code><div><h3>Cumulative result-byte budget</h3><p>按 run 限制累计 delivered-result bytes，同时不把 delivery rejection 伪装成 execution failure。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>DEVTOOLS</code><div><h3>Code Mode execution summary</h3><p>Trajectory inspection 已能消费 durable execution accounting 与 delivery-byte evidence。</p></div><span class="state">LANDED</span></article>
-        <article class="landed-item" data-rv><code>COVERAGE</code><div><h3>Focused runtime / fixture coverage</h3><p>Worker boot fixtures 与 fork-owned focused tests 跟踪当前 binding / output budget contracts。</p></div><span class="state">LANDED</span></article>
+      <div class="cards" id="workstreams">
+        <article class="card" data-reveal>
+          <code class="branch">agent/replay-reproducibility-evidence</code>
+          <div><h3>Replay reproducibility evidence</h3><p>持久化 request-scoped reproducibility evidence，明确 replay 实际使用的历史输入、snapshot/effect context，并继续区分 live-fork、reproducible replay 与 effect-free simulated replay。</p></div>
+          <span class="state">PR #17 · MERGED</span>
+        </article>
+        <article class="card" data-reveal>
+          <code class="branch">agent/execution-devtools-diagnostics</code>
+          <div><h3>Execution DevTools diagnostics</h3><p>把 durable accounting 纯派生成更强的诊断面：<code>deliveryRejected</code>、measured/unmeasured bytes、run-local peak concurrency、unsettled/orphan dispatch、incomplete evidence 与 per-tool execution summary；不改变 scheduler/runtime 语义。</p></div>
+          <span class="state">PR #18 · MERGED</span>
+        </article>
+        <article class="card" data-reveal>
+          <code class="branch">agent/offline-benchmark-validation</code>
+          <div><h3>Offline benchmark validation</h3><p>加入 versioned paired-result schema、semantic task fingerprint、strict pairing、failure taxonomy、deterministic offline fixture/replay、consistency validation 与中性 Markdown report。</p></div>
+          <span class="state">PR #19 · MERGED</span>
+        </article>
       </div>
     </div>
   </div>
 </section>
 
-<section id="workstreams">
+<section class="details">
   <div class="wrap">
-    <div class="s-head" data-rv>
-      <p class="s-idx">03 / ACTIVE WORKSTREAMS</p>
-      <h2>现在正在推进什么</h2>
-      <p class="s-note">三条 branch 从同一主线基线切出。这里描述的是开发范围，不把尚未合并的能力写成既成事实。</p>
+    <div class="section-head" data-reveal>
+      <div class="index">02 / DELIVERED CAPABILITIES</div>
+      <h2>三条线分别补齐了什么。</h2>
+      <p class="section-note">重点不是“feature 数量”，而是让运行证据、replay contract 与 benchmark evidence 之间形成可检查的边界。</p>
     </div>
-
-    <div class="stack">
-      <article class="work" style="--i:0" data-rv>
-        <div class="work-top"><span class="branch">agent/execution-devtools-diagnostics</span><span class="open">ACTIVE SCOPE</span></div>
-        <div class="work-grid">
-          <div><h3>Execution diagnostics</h3><p class="desc">把已有 accounting/evidence 升级为可以快速解释 trajectory 的诊断面。原则上只增强可观察性，不改变 runtime 行为。</p></div>
-          <div class="targets">
-            <div class="target"><b>deliveryRejected</b><span>把交付拒绝变成一等诊断信号。</span></div>
-            <div class="target"><b>byte accounting</b><span>让 measured / unmeasured / rejected 的 bytes 可区分。</span></div>
-            <div class="target"><b>peak concurrency</b><span>从 durable evidence 得到并发峰值。</span></div>
-            <div class="target"><b>orphan dispatch</b><span>识别 unsettled / orphan dispatch。</span></div>
-            <div class="target"><b>per-tool summary</b><span>按工具聚合执行、交付与失败证据。</span></div>
-            <div class="target"><b>behavior-neutral</b><span>diagnostics 默认不注入语义变化。</span></div>
-          </div>
-        </div>
+    <div class="detail-grid">
+      <article class="detail" data-reveal>
+        <div class="num">01 / REPLAY</div>
+        <h3>可复现性需要证据，而不是相似状态。</h3>
+        <p>Replay 能力继续沿历史请求重建与 executor-driven simulated replay 演进，并加入 request-scoped reproducibility evidence。是否可称为 reproducible replay，由实际证据决定。</p>
+        <div class="chips"><span class="chip">request provenance</span><span class="chip">snapshot context</span><span class="chip">effect semantics</span><span class="chip">simulated replay</span></div>
       </article>
-
-      <article class="work" style="--i:1" data-rv>
-        <div class="work-top"><span class="branch">agent/replay-reproducibility-evidence</span><span class="open">ACTIVE SCOPE</span></div>
-        <div class="work-grid">
-          <div><h3>Replay reproducibility</h3><p class="desc">继续收紧 replay 所依赖的 inputs、snapshots、effects 与 outputs，让“可复现”能够被证据证明，而不是靠“看起来一样”。</p></div>
-          <div class="targets">
-            <div class="target"><b>input provenance</b><span>明确 replay 实际使用的历史输入。</span></div>
-            <div class="target"><b>snapshot evidence</b><span>记录 snapshot 身份与重建依据。</span></div>
-            <div class="target"><b>effect semantics</b><span>区分 live effects 与 effect-free execution。</span></div>
-            <div class="target"><b>output evidence</b><span>让 replay 输出可归因到对应执行路径。</span></div>
-          </div>
-        </div>
+      <article class="detail" data-reveal>
+        <div class="num">02 / DIAGNOSTICS</div>
+        <h3>执行、结算、交付是不同事实。</h3>
+        <p>Diagnostics 直接从 durable CodeRunExecutionAccounting 派生，不重新定义 runtime 行为。无法从现有 evidence 证明的 global/session concurrency 也不会被伪装成精确指标。</p>
+        <div class="chips"><span class="chip">deliveryRejected</span><span class="chip">byte accounting</span><span class="chip">orphan settle</span><span class="chip">per-tool summary</span></div>
       </article>
-
-      <article class="work" style="--i:2" data-rv>
-        <div class="work-top"><span class="branch">agent/offline-benchmark-validation</span><span class="open">ACTIVE SCOPE</span></div>
-        <div class="work-grid">
-          <div><h3>Benchmark validation</h3><p class="desc">目标不是先产出漂亮分数，而是先证明 benchmark harness 自己可靠：结果成对、来源明确、失败可分类、报告可复核。</p></div>
-          <div class="targets">
-            <div class="target"><b>paired schema</b><span>显式表示配对结果、provenance 与 failure state。</span></div>
-            <div class="target"><b>fixtures</b><span>用 deterministic replay 验证 harness。</span></div>
-            <div class="target"><b>consistency</b><span>对不一致结果执行结构化检查。</span></div>
-            <div class="target"><b>failure taxonomy</b><span>把基础设施失败与任务失败区分开。</span></div>
-            <div class="target"><b>report generation</b><span>报告从 validated results 生成。</span></div>
-            <div class="target"><b>no fake score</b><span>基础设施存在 ≠ 性能结论成立。</span></div>
-          </div>
-        </div>
+      <article class="detail" data-reveal>
+        <div class="num">03 / BENCHMARK</div>
+        <h3>先验证 harness，再解释结果。</h3>
+        <p>Benchmark observation 现在作为 versioned evidence 处理。默认 strict pairing，fixture/replay 完全离线，并对 failure transition、derived accounting 与 result-set invariant 做校验。</p>
+        <div class="chips"><span class="chip">paired schema</span><span class="chip">task fingerprint</span><span class="chip">failure taxonomy</span><span class="chip">neutral report</span></div>
       </article>
     </div>
   </div>
 </section>
 
-<section id="roadmap">
+<section class="proof" id="proof">
   <div class="wrap">
-    <div class="s-head" data-rv>
-      <p class="s-idx">04 / ROADMAP</p>
-      <h2>从 evidence 到 reproducibility</h2>
-      <p class="s-note">路线图按基础能力依赖排序：先把事实记准，再把 replay 做实，最后才让 benchmark 结论具有可审计性。</p>
+    <div class="section-head" data-reveal>
+      <div class="index">03 / WHAT CAN BE CLAIMED</div>
+      <h2>现在能证明什么，也明确不能证明什么。</h2>
+    </div>
+    <div class="proof-grid">
+      <article class="proof-card" data-reveal><h3>Execution evidence</h3><p>可以保留 dispatch started / settled / failed，以及 result delivery/admission 是否成功的区别。<strong>执行成功不再自动等价于模型看到了结果。</strong></p></article>
+      <article class="proof-card" data-reveal><h3>Delivery & bytes</h3><p>可以区分 measured delivery bytes、unknown legacy evidence 和 delivery rejection，并对单次 run 的 delivered-result budget 做一致推导。</p></article>
+      <article class="proof-card" data-reveal><h3>Replay evidence</h3><p>可以重建历史 request input 并保留 request-scoped reproducibility evidence，同时避免把 live fork 和 reproducible replay 混成同一种语义。</p></article>
+      <article class="proof-card" data-reveal><h3>Benchmark evidence</h3><p>可以验证 paired observation、failure state、fixture digest 和 deterministic replay。<strong>它不会制造真实 benchmark 数据，也不会自动判断 Code Mode 更优。</strong></p></article>
+    </div>
+    <div class="ci" data-reveal><b>35 / 35</b><span>最终 benchmark integration 的 Fork CI static gates：35 passed、0 failed、0 skipped；focused job 同时通过 benchmark Python tests、execution accounting、delivery-byte、admission、replay 与 trajectory suites。</span></div>
+  </div>
+</section>
+
+<section class="next" id="next">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <div class="index">04 / NEXT PHASE</div>
+      <h2>下一步不是再拆三条 feature 线。</h2>
+      <p class="section-note">第一阶段的基础设施已经进入主干。接下来更有价值的是把它们串成稳定的开发者工作流，并开始使用真实、可追溯、可复核的数据做实验。</p>
     </div>
     <div class="road">
-      <article class="phase" data-rv><div class="phase-card"><span class="p">P0</span><h3>Trustworthy execution evidence</h3><p>补齐 rejected delivery、bytes、concurrency、unsettled/orphan work 和 per-tool summary。</p></div></article>
-      <article class="phase" data-rv><div class="phase-card"><span class="p">P1</span><h3>Reproducible replay</h3><p>收紧 historical snapshots、replay inputs 和 deterministic/effect-free regression paths。</p></div></article>
-      <article class="phase" data-rv><div class="phase-card"><span class="p">P2</span><h3>Validated benchmark harness</h3><p>建立 paired schema、fixture、consistency checks、failure taxonomy 与 report generation。</p></div></article>
-      <article class="phase" data-rv><div class="phase-card"><span class="p">P3</span><h3>Upstream-friendly integration</h3><p>保持 package/plugin seam 清晰，控制 fork-only architecture，持续与 upstream 对齐。</p></div></article>
+      <article class="phase" data-reveal><div class="p">P0 / INTEGRATE</div><h3>整合 developer diagnostics</h3><p>把 execution summary、trajectory inspection 与 replay evidence 串起来，同时维持 run-local 与 global/session claim 的证据边界。</p></article>
+      <article class="phase" data-reveal><div class="p">P1 / EXPERIMENT</div><h3>运行可复现实验</h3><p>真实 benchmark 使用 attributable inputs、validated result pairs、failure taxonomy 与 inspectable reports；结论留在 experiment 层。</p></article>
+      <article class="phase" data-reveal><div class="p">P2 / UPSTREAM</div><h3>持续控制 fork drift</h3><p>有意识地 sync/rebase upstream，优先保留小而清晰的 package/plugin seams，不积累没有必要的 fork-only privileged architecture。</p></article>
     </div>
-  </div>
-</section>
+    <div class="guardrail" data-reveal><b>Guardrail / 非目标</b><p>基础设施完成不等于模型或 execution mode 的胜负结论。没有 reproducible inputs、validated pairs、explicit failure handling 与 inspectable reports，就不应该把任何“更快 / 更省 / 更好”的说法包装成证据。</p></div>
 
-<section id="model">
-  <div class="wrap">
-    <div class="s-head" data-rv>
-      <p class="s-idx">05 / EVIDENCE MODEL</p>
-      <h2>一次 run 应该如何被解释</h2>
-      <p class="s-note">诊断不是从最终输出倒推故事，而是沿 durable evidence 逐层回答：发生了什么、什么被交付、什么被拒绝、能否重放、结论是否可验证。</p>
-    </div>
-    <div class="pipeline" data-rv>
-      <div class="node"><span class="tag">01</span><h3>Dispatch</h3><p>谁被调度、参数是什么、是否存在未 settle 的工作。</p></div>
-      <div class="node"><span class="tag">02</span><h3>Execute</h3><p>工具是否真正执行成功，耗时/失败属于哪一层。</p></div>
-      <div class="node"><span class="tag">03</span><h3>Delivery</h3><p>结果是否被 admission、拒绝，bytes 是否可测。</p></div>
-      <div class="node"><span class="tag">04</span><h3>Persist</h3><p>model-visible 信息与 replay 所需事实进入 session evidence。</p></div>
-      <div class="node"><span class="tag">05</span><h3>Replay</h3><p>明确 live fork / reproducible / simulated 的不同语义。</p></div>
-      <div class="node"><span class="tag">06</span><h3>Validate</h3><p>只有可复核的 paired result 才能进入 benchmark report。</p></div>
-    </div>
-    <div class="rejection" data-rv>deliveryRejected 是交付层事实，不应该被改写成“工具执行失败”；这类语义区分正是本 fork 的核心工作之一。</div>
-    <div class="non-goals" data-rv>
-      <span>伪造 benchmark 数字</span><span>用 instrumentation 存在本身证明 Code Mode 更强</span><span>把 runtime 行为修改藏进 diagnostics</span><span>为 fork 重写 Cordis / plugin 架构</span>
-    </div>
-  </div>
-</section>
-
-<section id="start">
-  <div class="wrap">
-    <div class="s-head" data-rv>
-      <p class="s-idx">06 / EXPLORE</p>
-      <h2>从源码和文档进入</h2>
-      <p class="s-note">GitHub Pages 作为 fork 的项目入口；完整 API、架构和用户指南继续由仓库里的 VitePress 文档站提供。</p>
-    </div>
-    <div class="start-grid">
-      <div class="links" data-rv>
-        <a class="link-card" href="./guide/"><b>中文指南 →</b><span>运行、配置与使用文档</span></a>
-        <a class="link-card" href="./develop/"><b>开发文档 →</b><span>架构与开发约定</span></a>
-        <a class="link-card" href="./reference/"><b>Reference →</b><span>参考资料与接口说明</span></a>
-        <a class="link-card" href="https://github.com/linkingoscar/deepseek-harness-oscar"><b>GitHub →</b><span>源码、branch 与提交历史</span></a>
-      </div>
-      <div class="codebox" data-rv>
-        <div class="codehead"><span>RUN FROM SOURCE</span><span>deepseek-harness-oscar</span></div>
-<pre><span class="cmd">git clone</span> <span class="path">https://github.com/linkingoscar/deepseek-harness-oscar.git</span>
-<span class="cmd">cd</span> deepseek-harness-oscar
-<span class="cmd">pnpm install</span>
-<span class="cmd">pnpm run build</span>
-<span class="cmd">pnpm dsh web</span>
-
-<span class="c"># upstream npm release remains:</span>
-<span class="cmd">npx @deepseek-ai/dsh web</span></pre>
+    <div class="links-section">
+      <div class="links">
+        <a class="link-card" href="./guide/" data-reveal><small>DOCUMENTATION</small><b>项目文档 →</b><p>继续阅读 DeepSeek Harness 的用户与开发文档。</p></a>
+        <a class="link-card" href="https://github.com/linkingoscar/deepseek-harness-oscar/blob/master/README.zh.md" data-reveal><small>FORK STATUS</small><b>中文 README →</b><p>查看当前 fork 的开发思想、已交付能力与 roadmap。</p></a>
+        <a class="link-card" href="https://github.com/linkingoscar/deepseek-harness-oscar" data-reveal><small>SOURCE</small><b>GitHub repository →</b><p>查看源码、PR、Agent Notes 与持续集成状态。</p></a>
       </div>
     </div>
   </div>
@@ -441,132 +290,19 @@ footer{border-top:1px solid var(--line);padding:58px 0 30px;overflow:hidden}
 </main>
 
 <footer>
-  <div class="marquee" aria-hidden="true"><span>DEEPSEEK HARNESS · EVIDENCE FIRST · REPLAYABLE · AUDITABLE · </span><span>DEEPSEEK HARNESS · EVIDENCE FIRST · REPLAYABLE · AUDITABLE · </span></div>
-  <div class="wrap foot">
-    <p><strong>DeepSeek Harness — Oscar Fork.</strong><br>Engineering fork focused on auditable execution, reproducible replay, diagnostics, and benchmark validation. Not an official DeepSeek release.</p>
-    <small>MIT · <a href="https://github.com/deepseek-ai/deepseek-harness">UPSTREAM</a> · <a href="#hero">BACK TO TOP ↑</a></small>
-  </div>
+  <div class="wrap foot"><span>DeepSeek Harness — Oscar Fork · Engineering fork, not an official DeepSeek release.</span><span><code>EVIDENCE BEFORE INTERPRETATION</code></span></div>
 </footer>
 
 <script>
-(() => {
-  'use strict'
-  const $ = (s) => document.querySelector(s)
-  const $$ = (s) => [...document.querySelectorAll(s)]
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-  const clamp = (v,a,b) => Math.min(b,Math.max(a,v))
-
-  const progress = $('#progress')
-  addEventListener('scroll', () => {
-    const h = document.documentElement
-    const max = h.scrollHeight - h.clientHeight
-    progress.style.width = (max > 0 ? h.scrollTop / max * 100 : 0) + '%'
-  }, { passive: true })
-
-  const ticker = $('#ticker')
-  ticker.innerHTML += ticker.innerHTML
-
-  const io = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue
-      entry.target.classList.add('in')
-      io.unobserve(entry.target)
-    }
-  }, { threshold: .14 })
-  $$('[data-rv]').forEach((el) => io.observe(el))
-
-  function decode(el, delay) {
-    if (!el || reduced) return
-    const final = el.dataset.text
-    const glyphs = '█▓▒░<>/\\|=+*#%DSH'
-    let frame = 0
-    setTimeout(() => {
-      const timer = setInterval(() => {
-        frame += 1
-        const reveal = Math.floor(frame / 2.2)
-        el.textContent = [...final].map((ch, i) => i < reveal ? ch : glyphs[Math.floor(Math.random() * glyphs.length)]).join('')
-        if (reveal >= final.length) {
-          clearInterval(timer)
-          el.textContent = final
-        }
-      }, 36)
-    }, delay)
-  }
-  decode($('#decode1'), 180)
-  decode($('#decode2'), 520)
-
-  const canvas = $('#fx')
-  const hero = $('#hero')
-  if (canvas && hero) {
-    const ctx = canvas.getContext('2d')
-    let width = 0, height = 0, mx = -999, my = -999
-    const dpr = Math.min(devicePixelRatio || 1, 2)
-    const resize = () => {
-      width = hero.clientWidth
-      height = hero.clientHeight
-      canvas.width = width * dpr
-      canvas.height = height * dpr
-      canvas.style.width = width + 'px'
-      canvas.style.height = height + 'px'
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    }
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height)
-      const cell = 30, radius = 150
-      for (let x = cell / 2; x < width; x += cell) {
-        for (let y = cell / 2; y < height; y += cell) {
-          const dx = x - mx, dy = y - my, dist = Math.hypot(dx, dy)
-          const k = clamp(1 - dist / radius, 0, 1)
-          const ox = dist && k ? dx / dist * k * 6 : 0
-          const oy = dist && k ? dy / dist * k * 6 : 0
-          ctx.strokeStyle = k > .02 ? `rgba(143,123,255,${.12 + k * .48})` : 'rgba(120,126,160,.11)'
-          ctx.lineWidth = 1
-          const px = x + ox, py = y + oy, s = 3 + k * 1.5
-          ctx.beginPath()
-          ctx.moveTo(px - s, py); ctx.lineTo(px + s, py)
-          ctx.moveTo(px, py - s); ctx.lineTo(px, py + s)
-          ctx.stroke()
-        }
-      }
-    }
-    resize()
-    hero.addEventListener('mousemove', (event) => {
-      const rect = hero.getBoundingClientRect()
-      mx = event.clientX - rect.left
-      my = event.clientY - rect.top
-    })
-    addEventListener('resize', resize)
-    if (reduced) draw()
-    else {
-      let visible = true
-      new IntersectionObserver((e) => { visible = e[0].isIntersecting }).observe(hero)
-      ;(function loop(){ if (visible && !document.hidden) draw(); requestAnimationFrame(loop) })()
-    }
-  }
-
-  if (!reduced) {
-    const cards = $$('.work')
-    let ticking = false
-    const update = () => {
-      ticking = false
-      cards.forEach((card, index) => {
-        const next = cards[index + 1]
-        if (!next) return
-        const top = parseFloat(getComputedStyle(card).top) || 80
-        const height = card.offsetHeight
-        const nextTop = next.getBoundingClientRect().top
-        const p = clamp(1 - (nextTop - top) / height, 0, 1)
-        card.style.transform = `scale(${1 - p * .035})`
-        card.style.filter = `brightness(${1 - p * .25})`
-      })
-    }
-    addEventListener('scroll', () => {
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(update)
-    }, { passive: true })
-  }
-})()
+const progress=document.getElementById('progress');
+const updateProgress=()=>{const max=document.documentElement.scrollHeight-innerHeight;progress.style.width=(max>0?scrollY/max*100:0)+'%'};
+addEventListener('scroll',updateProgress,{passive:true});updateProgress();
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(reduced){document.querySelectorAll('[data-reveal]').forEach(el=>el.classList.add('in'))}
+else{
+  const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('in');io.unobserve(entry.target)}}),{threshold:.12});
+  document.querySelectorAll('[data-reveal]').forEach(el=>io.observe(el));
+}
 </script>
 </body>
 </html>
