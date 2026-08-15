@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,208 +16,158 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-class BenchMetricsTests(unittest.TestCase):
-    def test_event_metrics_sum_usage_code_mode_and_prompt_envelope(self) -> None:
-        tools_before = [{
-            "name": "read",
-            "description": "Read a file",
-            "parameters": {"type": "object"},
-        }]
-        tools_after = [
-            *tools_before,
-            {
-                "name": "write",
-                "description": "Write a file",
-                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
-            },
-        ]
-        events = [
-            {"type": "turn/end", "data": {}},
-            {"type": "step/end", "data": {}},
-            {"type": "request/header", "data": {"header": {"system": "abc", "tools": tools_before}}},
-            {"type": "tool/call", "data": {"name": "run_code"}},
-            {"type": "tool/result", "data": {}},
-            {"type": "tool/code-dispatch-start", "data": {"name": "bash"}},
-            {"type": "tool/code-dispatch", "data": {"name": "bash", "isError": False}},
-            {"type": "tool/code-dispatch", "data": {"name": "str_replace_editor", "isError": True}},
-            {"type": "request/header", "data": {"header": {"system": "abcdef", "tools": tools_after}}},
-            {
-                "type": "assistant/message",
-                "data": {
-                    "usage": {
-                        "inputTokens": 10,
-                        "outputTokens": 3,
-                        "cacheReadTokens": 5,
-                        "cacheWriteTokens": 2,
-                        "reasoningTokens": 4,
-                    }
-                },
-            },
-        ]
+def command_result(exit_code: int = 0) -> dict[str, object]:
+    return {
+        "exit_code": exit_code,
+        "seconds": 0.1,
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "timed_out": False,
+        "spawn_error": None,
+    }
 
-        metrics = MODULE.event_metrics(events)
-        tools_before_chars = MODULE.compact_json_chars(tools_before)[1]
-        tools_after_chars = MODULE.compact_json_chars(tools_after)[1]
-        first_envelope = 3 + tools_before_chars
-        last_envelope = 6 + tools_after_chars
 
-        self.assertEqual(metrics["turns"], 1)
-        self.assertEqual(metrics["steps"], 1)
-        self.assertEqual(metrics["tool_calls"], 1)
-        self.assertEqual(metrics["run_code_calls"], 1)
-        self.assertEqual(metrics["code_subcalls"], 2)
-        self.assertEqual(metrics["code_subcall_errors"], 1)
-        self.assertEqual(metrics["leaf_tool_calls"], 2)
-        self.assertEqual(metrics["tool_errors"], 0)
-        self.assertEqual(metrics["input_tokens"], 10)
-        self.assertEqual(metrics["output_tokens"], 3)
-        self.assertEqual(metrics["reasoning_tokens"], 4)
-        self.assertEqual(metrics["billed_input_tokens"], 17)
-        self.assertEqual(metrics["request_headers"], 2)
-        self.assertEqual(metrics["prompt_envelope_changes"], 1)
-        self.assertEqual(metrics["max_system_chars"], 6)
-        self.assertEqual(metrics["max_tool_schema_json_chars"], tools_after_chars)
-        self.assertEqual(metrics["max_prompt_envelope_chars"], last_envelope)
-        self.assertEqual(metrics["max_tool_count"], 2)
-        self.assertEqual(metrics["prompt_envelope_growth_chars"], last_envelope - first_envelope)
-        self.assertEqual(metrics["max_prompt_envelope_step_growth_chars"], last_envelope - first_envelope)
+def result_row(
+    *,
+    task_id: str = "task",
+    repetition: int = 1,
+    fingerprint: str = "sha256:" + "a" * 64,
+    success: bool | None = True,
+    failure_kind: str | None = None,
+    status: str = "completed",
+    outcome: str = "passed",
+    scored: bool = True,
+    metric: int = 1,
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "schema_version": MODULE.RESULT_SCHEMA_VERSION,
+        "kind": MODULE.RESULT_KIND,
+        "task_id": task_id,
+        "repetition": repetition,
+        "task_fingerprint": fingerprint,
+        "workspace": "/tmp/workspace",
+        "provider": "provider",
+        "model": "model",
+        "status": status,
+        "outcome": outcome,
+        "success": success,
+        "scored": scored,
+        "failure_kind": failure_kind,
+        "prepare": None,
+    }
+    if status == "completed":
+        row.update({
+            "finish_reason": "stop",
+            "agent_seconds": float(metric),
+            "session_id": "session",
+            "session_root": "/tmp/sessions",
+            "final_response": "response",
+            "check": command_result(0 if success is True else 1) if scored else None,
+        })
+        for field in MODULE.COUNT_METRIC_FIELDS:
+            row[field] = metric
+        row["run_code_calls"] = 0
+        row["code_subcalls"] = 0
+        row["leaf_tool_calls"] = row["tool_calls"]
+        row["input_tokens"] = metric
+        row["cache_read_tokens"] = metric
+        row["cache_write_tokens"] = metric
+        row["billed_input_tokens"] = metric * 3
+        for field in MODULE.SIGNED_METRIC_FIELDS:
+            row[field] = metric
+    return row
 
-    def test_repeated_request_header_does_not_count_as_change(self) -> None:
-        header = {"system": "same", "tools": []}
-        metrics = MODULE.event_metrics([
-            {"type": "request/header", "data": {"header": header}},
-            {"type": "request/header", "data": {"header": header}},
-        ])
-        self.assertEqual(metrics["request_headers"], 2)
-        self.assertEqual(metrics["prompt_envelope_changes"], 0)
-        self.assertEqual(metrics["prompt_envelope_growth_chars"], 0)
-        self.assertEqual(metrics["max_prompt_envelope_step_growth_chars"], 0)
 
-    def test_native_leaf_calls_equal_model_tool_calls(self) -> None:
-        metrics = MODULE.event_metrics([
-            {"type": "tool/call", "data": {"name": "bash"}},
-            {"type": "tool/call", "data": {"name": "str_replace_editor"}},
-        ])
-        self.assertEqual(metrics["tool_calls"], 2)
-        self.assertEqual(metrics["leaf_tool_calls"], 2)
-        self.assertEqual(metrics["run_code_calls"], 0)
-        self.assertEqual(metrics["code_subcalls"], 0)
+class BenchmarkValidationTests(unittest.TestCase):
+    def test_duplicate_result_keys_are_rejected(self) -> None:
+        row = result_row()
+        with self.assertRaisesRegex(ValueError, "duplicate result key task#1"):
+            MODULE.validated_index([row, dict(row)], source="fixture")
 
-    def test_compare_pairs_by_task_and_repetition(self) -> None:
-        baseline = [
-            {
-                "task_id": "a",
-                "repetition": 1,
-                "scored": True,
-                "success": True,
-                "agent_seconds": 2.0,
-                "turns": 1,
-                "steps": 1,
-                "tool_calls": 2,
-                "leaf_tool_calls": 2,
-                "code_subcalls": 0,
-                "billed_input_tokens": 100,
-                "output_tokens": 20,
-                "request_headers": 2,
-                "prompt_envelope_changes": 1,
-                "max_system_chars": 900,
-                "max_tool_schema_json_chars": 1100,
-                "max_prompt_envelope_chars": 2000,
-                "max_tool_count": 5,
-                "prompt_envelope_growth_chars": 100,
-                "max_prompt_envelope_step_growth_chars": 100,
-            },
-            {"task_id": "baseline-only", "repetition": 1, "scored": True, "success": True},
-        ]
-        candidate = [
-            {
-                "task_id": "a",
-                "repetition": 1,
-                "scored": True,
-                "success": False,
-                "agent_seconds": 3.0,
-                "turns": 2,
-                "steps": 2,
-                "tool_calls": 1,
-                "leaf_tool_calls": 3,
-                "code_subcalls": 3,
-                "billed_input_tokens": 120,
-                "output_tokens": 25,
-                "request_headers": 2,
-                "prompt_envelope_changes": 0,
-                "max_system_chars": 1000,
-                "max_tool_schema_json_chars": 400,
-                "max_prompt_envelope_chars": 1400,
-                "max_tool_count": 1,
-                "prompt_envelope_growth_chars": 0,
-                "max_prompt_envelope_step_growth_chars": 0,
-            },
-            {"task_id": "candidate-only", "repetition": 1, "scored": True, "success": True},
-        ]
+    def test_derived_metrics_are_validated(self) -> None:
+        row = result_row()
+        row["leaf_tool_calls"] = 99
+        with self.assertRaisesRegex(ValueError, "leaf_tool_calls"):
+            MODULE.validated_index([row], source="fixture")
 
-        comparison = MODULE.compare_results(baseline, candidate)
+    def test_non_contiguous_repetitions_are_rejected(self) -> None:
+        first = result_row(repetition=1)
+        third = result_row(repetition=3)
+        with self.assertRaisesRegex(ValueError, "non-contiguous repetitions"):
+            MODULE.validated_index([first, third], source="fixture")
 
+    def test_incomplete_pairs_are_strict_by_default(self) -> None:
+        baseline = [result_row(task_id="a"), result_row(task_id="b")]
+        candidate = [result_row(task_id="a", metric=2)]
+        with self.assertRaisesRegex(ValueError, "paired result sets are incomplete"):
+            MODULE.compare_results(baseline, candidate)
+
+        comparison = MODULE.compare_results(baseline, candidate, allow_partial=True)
+        self.assertFalse(comparison["pairing"]["complete"])
+        self.assertEqual(comparison["pairing"]["baseline_only"], ["b#1"])
         self.assertEqual(comparison["paired_runs"], 1)
-        self.assertEqual(comparison["regressions"], ["a#1"])
-        self.assertEqual(comparison["improvements"], [])
-        self.assertEqual(comparison["delta_candidate_minus_baseline"]["pass_rate"], -1.0)
-        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_tool_calls"], -1.0)
-        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_leaf_tool_calls"], 1.0)
-        self.assertEqual(comparison["delta_candidate_minus_baseline"]["median_code_subcalls"], 3.0)
-        self.assertEqual(
-            comparison["delta_candidate_minus_baseline"]["median_max_prompt_envelope_chars"],
-            -600.0,
-        )
-        self.assertEqual(
-            comparison["delta_candidate_minus_baseline"]["median_max_tool_schema_json_chars"],
-            -700.0,
-        )
-        self.assertEqual(
-            comparison["delta_candidate_minus_baseline"]["median_prompt_envelope_changes"],
-            -1.0,
-        )
 
+    def test_task_fingerprint_mismatch_is_rejected(self) -> None:
+        baseline = [result_row(fingerprint="sha256:" + "a" * 64)]
+        candidate = [result_row(fingerprint="sha256:" + "b" * 64)]
+        with self.assertRaisesRegex(ValueError, "different task_fingerprint"):
+            MODULE.compare_results(baseline, candidate)
 
-class TaskLoadingTests(unittest.TestCase):
-    def test_duplicate_ids_are_rejected(self) -> None:
+    def test_failure_taxonomy_and_transitions_are_reported(self) -> None:
+        baseline = [result_row(success=True, metric=1)]
+        candidate = [
+            result_row(
+                success=False,
+                failure_kind="check-nonzero",
+                outcome="failed",
+                metric=2,
+            )
+        ]
+        comparison = MODULE.compare_results(baseline, candidate)
+        self.assertEqual(comparison["regressions"], ["task#1"])
+        self.assertEqual(comparison["failure_transitions"], {"none->check-nonzero": 1})
+        pair = comparison["pairs"][0]
+        self.assertEqual(pair["outcome_transition"], "passed->failed")
+        self.assertEqual(pair["delta_candidate_minus_baseline"]["turns"], 1)
+
+    def test_fixture_replay_is_deterministic(self) -> None:
+        baseline = [result_row(metric=1)]
+        candidate = [result_row(metric=2)]
+        fixture = MODULE.create_fixture(baseline, candidate)
+        replayed = MODULE.replay_fixture(fixture, source="fixture")
+        self.assertEqual(replayed, fixture["expected_comparison"])
+
+        fixture["expected_comparison"]["paired_runs"] = 999
+        with self.assertRaisesRegex(ValueError, "deterministic replay differs"):
+            MODULE.replay_fixture(fixture, source="fixture")
+
+    def test_fixture_digest_detects_observation_edits(self) -> None:
+        fixture = MODULE.create_fixture([result_row(metric=1)], [result_row(metric=2)])
+        fixture["candidate_results"][0]["final_response"] = "edited"
+        with self.assertRaisesRegex(ValueError, "candidate_digest"):
+            MODULE.replay_fixture(fixture, source="fixture")
+
+    def test_markdown_report_is_neutral_and_contains_failure_counts(self) -> None:
+        comparison = MODULE.compare_results(
+            [result_row(success=True, metric=1)],
+            [result_row(success=False, failure_kind="check-nonzero", outcome="failed", metric=2)],
+        )
+        report = MODULE.render_markdown_report(comparison)
+        self.assertIn("does not infer which agent composition or execution mode is better", report)
+        self.assertIn("`check-nonzero`", report)
+        self.assertIn("Pass → fail: task#1", report)
+
+    def test_cli_fixture_and_replay_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            tasks = root / "tasks.jsonl"
-            row = {"id": "same", "workspace": str(root), "prompt": "Do work"}
-            tasks.write_text(json.dumps(row) + "\n" + json.dumps(row) + "\n", encoding="utf-8")
+            baseline = root / "baseline.jsonl"
+            candidate = root / "candidate.jsonl"
+            fixture = root / "fixture.json"
+            baseline.write_text(json.dumps(result_row(metric=1)) + "\n", encoding="utf-8")
+            candidate.write_text(json.dumps(result_row(metric=2)) + "\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "duplicate task id"):
-                MODULE.load_tasks(tasks)
-
-    def test_command_must_be_argv_array(self) -> None:
-        with self.assertRaisesRegex(ValueError, "non-empty JSON array"):
-            MODULE.optional_command("pytest -q", source="task.check")
-
-
-class ParserTests(unittest.TestCase):
-    def test_compare_modes_defaults_to_checked_in_compositions(self) -> None:
-        parsed = MODULE.parser().parse_args([
-            "compare-modes",
-            "tasks.jsonl",
-            "--output-dir",
-            ".bench/code-mode",
-        ])
-        self.assertEqual(parsed.toolset, "fs")
-        self.assertIsNone(parsed.native_cordis)
-        self.assertIsNone(parsed.code_cordis)
-        self.assertEqual(MODULE.MODE_CORDIS_PAIRS["fs"], (MODULE.DEFAULT_FS_NATIVE_CORDIS, MODULE.DEFAULT_FS_CODE_CORDIS))
-        self.assertEqual(parsed.repeat, 1)
-
-    def test_compare_modes_can_select_shell_pair(self) -> None:
-        parsed = MODULE.parser().parse_args([
-            "compare-modes",
-            "tasks.jsonl",
-            "--output-dir",
-            ".bench/code-mode",
-            "--toolset",
-            "shell",
-        ])
-        self.assertEqual(parsed.toolset, "shell")
+            self.assertEqual(MODULE.main(["fixture", str(baseline), str(candidate), "--output", str(fixture)]), 0)
+            self.assertEqual(MODULE.main(["replay", str(fixture)]), 0)
 
 
 if __name__ == "__main__":
