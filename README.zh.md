@@ -102,6 +102,8 @@ npx @deepseek-ai/dsh web
 
 这会运行上游发布的 npm 包，并默认在 `http://127.0.0.1:3080` 启动 Web UI。详见 [Web UI 指南](docs/user/guide/index.md)。
 
+<a id="run-from-source"></a>
+
 ### 从源码运行当前 fork
 
 ```sh
