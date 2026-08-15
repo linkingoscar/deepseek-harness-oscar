@@ -102,6 +102,8 @@ npx @deepseek-ai/dsh web
 
 This runs the published upstream package and starts the Web UI at `http://127.0.0.1:3080` by default. See the [Web UI guide](docs/user/guide/index.md).
 
+<a id="run-from-source"></a>
+
 ### Run this fork from source
 
 ```sh
