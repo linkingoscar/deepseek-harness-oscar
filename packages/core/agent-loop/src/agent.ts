@@ -29,6 +29,7 @@ import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionId, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
 import { canonicalHeader, headerEquals } from '@deepseek-ai/dsh-session'
+import { ReplayReproducibilityEvidenceCollector } from '@deepseek-ai/dsh-session/reproducibility-evidence'
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { Context } from '@deepseek-ai/cordis'
@@ -400,6 +401,33 @@ export class ReactLoopAgent implements Agent {
     }
   }
 
+  /** Record optional request-scoped replay evidence without letting diagnostics veto execution. */
+  private captureReproducibilityEvidence(
+    turn: number,
+    step: number,
+    requestHeaderSeq: number,
+    header: EpochHeader,
+  ): void {
+    const collector = new ReplayReproducibilityEvidenceCollector()
+    try {
+      this.dispatch.emit('agent/request-reproducibility-evidence', {
+        turn,
+        step,
+        requestHeaderSeq,
+        header,
+        sink: collector,
+      })
+      const evidence = collector.finalize(requestHeaderSeq)
+      if (evidence !== undefined) {
+        this.session.append('replay/reproducibility-evidence', evidence)
+      }
+    } catch (error: unknown) {
+      this.loopCtx.logger.warn(
+        `agent \"${this.id}\" could not record replay reproducibility evidence for request/header ${requestHeaderSeq}: ${String(error)}`,
+      )
+    }
+  }
+
   /**
    * Compose one frozen request and bind it to the adapter registration that
    * resolved its exact-model defaults.
@@ -462,11 +490,20 @@ export class ReactLoopAgent implements Agent {
       ...tools.length > 0 ? { tools } : {},
     })
     const baseline = this.session.requestHeader()
+    let loggedRequestHeader: { seq: number; header: EpochHeader } | undefined
     if (!this.requestHeaderLogged) {
-      this.session.append('request/header', { header, reason: baseline === undefined ? 'initial' : 'resume' })
+      const event = this.session.append('request/header', {
+        header,
+        reason: baseline === undefined ? 'initial' : 'resume',
+      })
+      loggedRequestHeader = { seq: event.seq, header: event.data.header }
       this.requestHeaderLogged = true
     } else if (baseline === undefined || !headerEquals(baseline, header)) {
-      this.session.append('request/header', { header, reason: 'change' })
+      const event = this.session.append('request/header', { header, reason: 'change' })
+      loggedRequestHeader = { seq: event.seq, header: event.data.header }
+    }
+    if (loggedRequestHeader !== undefined) {
+      this.captureReproducibilityEvidence(turn, step, loggedRequestHeader.seq, loggedRequestHeader.header)
     }
 
     const contextWindow = preparedCall?.context?.contextWindow

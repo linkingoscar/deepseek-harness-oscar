@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { ReplayRequestSnapshot } from '../src/replay-request.ts'
 import {
   inspectReplayCapabilities,
   ReplayInspectionError,
   ReplaySimulationError,
   simulateReplayRequest,
 } from '../src/replay.ts'
-import type { ReplaySimulationExecutor } from '../src/replay.ts'
+import type {
+  ReplayReproducibilityEvidence,
+  ReplaySimulationExecutor,
+  ReplaySnapshotReference,
+} from '../src/replay.ts'
 
 const CONFIG = { provider: 'mock', model: 'm' }
 
@@ -21,6 +26,30 @@ function completedRequest(system = 'system'): SessionEvent[] {
     },
     { type: 'turn/end', seq: 2, time: 12, data: { turn: 1, reason: { kind: 'completed' } } },
   ]
+}
+
+function digest(hex: string): { algorithm: 'sha256'; digest: string } {
+  return { algorithm: 'sha256', digest: hex.repeat(64) }
+}
+
+function snapshot(name: string, hex: string): ReplaySnapshotReference {
+  return {
+    format: 'fixture-v1',
+    locator: `fixture://${name}`,
+    digest: digest(hex),
+  }
+}
+
+function evidenceEvent(
+  seq: number,
+  evidence: ReplayReproducibilityEvidence,
+): SessionEvent<'replay/reproducibility-evidence'> {
+  return {
+    type: 'replay/reproducibility-evidence',
+    seq,
+    time: 10 + seq,
+    data: evidence,
+  }
 }
 
 describe('inspectReplayCapabilities', () => {
@@ -61,6 +90,7 @@ describe('inspectReplayCapabilities', () => {
     })
     expect(inspection).not.toHaveProperty('requestHeader')
     expect(inspection).not.toHaveProperty('latestRequestHeaderSeq')
+    expect(inspection).not.toHaveProperty('reproducibilityEvidence')
   })
 
   it('reports a completed request prefix as reconstructable and simulation-ready when an executor is supplied', () => {
@@ -80,6 +110,141 @@ describe('inspectReplayCapabilities', () => {
     expect(inspection.modes['live-fork']).toEqual({
       mode: 'live-fork', availability: 'conditional', effects: 'live-if-executed', blockers: ['LIVE_SOURCE_REQUIRED'],
     })
+  })
+
+  it('keeps identity fingerprints distinct from restorable snapshot evidence', () => {
+    const events: SessionEvent[] = [
+      ...completedRequest(),
+      evidenceEvent(3, {
+        version: 1,
+        requestHeaderSeq: 1,
+        identity: {
+          runtime: digest('a'),
+          configuration: digest('b'),
+          toolSchemas: digest('c'),
+          pluginGraph: digest('d'),
+        },
+      }),
+    ]
+
+    const inspection = inspectReplayCapabilities(events)
+    expect(inspection.reproducibilityEvidenceSeq).toBe(3)
+    expect(inspection.reproducibilityEvidence?.identity?.runtime).toEqual(digest('a'))
+    expect(inspection.modes.reproducible).toEqual({
+      mode: 'reproducible',
+      availability: 'unavailable',
+      effects: 'live-if-executed',
+      blockers: [
+        'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED',
+        'EXTERNAL_STATE_NOT_SNAPSHOTTED',
+        'REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED',
+      ],
+    })
+  })
+
+  it('removes only snapshot-presence blockers when both snapshot references are durably evidenced', () => {
+    const evidence: ReplayReproducibilityEvidence = {
+      version: 1,
+      requestHeaderSeq: 1,
+      identity: { runtime: digest('a') },
+      executionEnvironmentSnapshot: snapshot('environment', 'e'),
+      externalStateSnapshot: snapshot('external', 'f'),
+    }
+    const inspection = inspectReplayCapabilities([
+      ...completedRequest(),
+      evidenceEvent(3, evidence),
+    ])
+
+    expect(inspection.reproducibilityEvidenceSeq).toBe(3)
+    expect(inspection.reproducibilityEvidence).toEqual(evidence)
+    expect(Object.isFrozen(inspection.reproducibilityEvidence)).toBe(true)
+    expect(inspection.modes.reproducible).toEqual({
+      mode: 'reproducible',
+      availability: 'unavailable',
+      effects: 'live-if-executed',
+      blockers: ['REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED'],
+    })
+  })
+
+  it('fails closed on malformed latest replacement evidence instead of falling back to an older valid claim', () => {
+    const valid = evidenceEvent(3, {
+      version: 1,
+      requestHeaderSeq: 1,
+      executionEnvironmentSnapshot: snapshot('environment', 'e'),
+      externalStateSnapshot: snapshot('external', 'f'),
+    })
+    const malformed = {
+      type: 'replay/reproducibility-evidence',
+      seq: 4,
+      time: 14,
+      data: {
+        version: 1,
+        requestHeaderSeq: 1,
+        executionEnvironmentSnapshot: {
+          format: 'fixture-v1',
+          locator: '',
+          digest: digest('e'),
+        },
+        externalStateSnapshot: snapshot('external', 'f'),
+      },
+    } as unknown as SessionEvent
+
+    const inspection = inspectReplayCapabilities([...completedRequest(), valid, malformed])
+    expect(inspection).not.toHaveProperty('reproducibilityEvidence')
+    expect(inspection.modes.reproducible.blockers).toEqual([
+      'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED',
+      'EXTERNAL_STATE_NOT_SNAPSHOTTED',
+      'REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED',
+    ])
+  })
+
+  it('scopes reproducibility evidence to the exact request and the selected inspection boundary', () => {
+    const events: SessionEvent[] = [
+      ...completedRequest('first'),
+      evidenceEvent(3, {
+        version: 1,
+        requestHeaderSeq: 1,
+        executionEnvironmentSnapshot: snapshot('environment', 'e'),
+        externalStateSnapshot: snapshot('external', 'f'),
+      }),
+      { type: 'turn/start', seq: 4, time: 14, data: { turn: 2 } },
+      {
+        type: 'request/header',
+        seq: 5,
+        time: 15,
+        data: { header: { config: { provider: 'mock', model: 'later' }, system: 'second' }, reason: 'change' },
+      },
+      { type: 'turn/end', seq: 6, time: 16, data: { turn: 2, reason: { kind: 'completed' } } },
+    ]
+
+    const first = inspectReplayCapabilities(events, 3)
+    const second = inspectReplayCapabilities(events)
+    expect(first.reproducibilityEvidenceSeq).toBe(3)
+    expect(first.modes.reproducible.blockers).toEqual(['REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED'])
+    expect(second.latestRequestHeaderSeq).toBe(5)
+    expect(second).not.toHaveProperty('reproducibilityEvidence')
+    expect(second.modes.reproducible.blockers).toEqual([
+      'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED',
+      'EXTERNAL_STATE_NOT_SNAPSHOTTED',
+      'REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED',
+    ])
+  })
+
+  it('rejects ignorable evidence records from strengthening required replay semantics', () => {
+    const ignored = {
+      ...evidenceEvent(3, {
+        version: 1,
+        requestHeaderSeq: 1,
+        executionEnvironmentSnapshot: snapshot('environment', 'e'),
+        externalStateSnapshot: snapshot('external', 'f'),
+      }),
+      ignorable: true,
+    } as SessionEvent
+    const inspection = inspectReplayCapabilities([...completedRequest(), ignored])
+
+    expect(inspection).not.toHaveProperty('reproducibilityEvidence')
+    expect(inspection.modes.reproducible.blockers).toContain('EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED')
+    expect(inspection.modes.reproducible.blockers).toContain('EXTERNAL_STATE_NOT_SNAPSHOTTED')
   })
 
   it('rejects live-fork readiness when the selected prefix ends inside an open turn', () => {
@@ -136,7 +301,7 @@ describe('inspectReplayCapabilities', () => {
 
 describe('simulateReplayRequest', () => {
   it('supplies the exact reconstructed request to an effect-free executor and returns its opaque result', async () => {
-    const execute = vi.fn((request) => ({
+    const execute = vi.fn((request: ReplayRequestSnapshot) => ({
       system: request.header.system,
       messageCount: request.messages.length,
     }))
