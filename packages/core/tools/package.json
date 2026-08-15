@@ -30,12 +30,17 @@
       "types": "./lib/types/presentation.d.ts",
       "default": "./lib/presentation.js"
     },
+    "./execution-diagnostics": {
+      "types": "./lib/types/execution-diagnostics.d.ts",
+      "default": "./lib/execution-diagnostics.js"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
     "lib/invariant.js",
+    "lib/execution-diagnostics.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
