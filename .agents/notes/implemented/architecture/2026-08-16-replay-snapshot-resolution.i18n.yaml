@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-16-replay-snapshot-resolution.md
 2026-08-16-replay-snapshot-resolution.md: 9f674d1c89f89d4dce9b20ae3f934e6e85016051
-2026-08-16-replay-snapshot-resolution.zh.md: 7b317e60cc9be131e435fbaef6a97553206de480
+2026-08-16-replay-snapshot-resolution.zh.md: b97edf32752b91382de846299fe7e4bde186ccda
