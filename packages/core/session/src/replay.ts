@@ -1,9 +1,10 @@
 /**
- * Public replay facade for capability inspection and effect-free simulation.
+ * Public replay facade for capability inspection, artifact verification, and effect-free simulation.
  *
  * Replay modes retain distinct evidence and effect semantics. Request
- * reconstruction, durable reproducibility evidence, and simulated execution do
- * not imply that live external effects can be reproduced.
+ * reconstruction, durable reproducibility evidence, verified snapshot bytes,
+ * and simulated execution do not imply that live external effects can be
+ * reproduced.
  *
  * @module @deepseek-ai/dsh-session/replay
  */
@@ -27,6 +28,16 @@ export type {
   ReplayInspection,
   ReplayMode,
 } from './replay-inspection.ts'
+
+export { resolveReplaySnapshots } from './replay-snapshot.ts'
+export type {
+  ReplaySnapshotKind,
+  ReplaySnapshotResolution,
+  ReplaySnapshotResolutionReport,
+  ReplaySnapshotResolveFailure,
+  ReplaySnapshotResolver,
+  ReplaySnapshotResolverContractFailure,
+} from './replay-snapshot.ts'
 
 export {
   ReplaySimulationError,
