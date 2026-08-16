@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import * as replayFacade from '../src/replay.ts'
 import {
   inspectReplayCapabilities,
   ReplaySimulationError,
@@ -51,6 +52,15 @@ function evidenceEvent(
 }
 
 describe('replay contract hardening', () => {
+  it('keeps internal replay helpers off the public facade', () => {
+    expect(Object.keys(replayFacade).sort()).toEqual([
+      'ReplayInspectionError',
+      'ReplaySimulationError',
+      'inspectReplayCapabilities',
+      'simulateReplayRequest',
+    ])
+  })
+
   it('freezes the capability table, capability records, and blocker lists returned by inspection', () => {
     const inspection = inspectReplayCapabilities(completedRequest())
 
