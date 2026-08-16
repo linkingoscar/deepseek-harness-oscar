@@ -19,6 +19,12 @@
 
 持久化是可选的，可动态挂载或卸载。已挂载持久化无法读取时，跨语料库列表和血缘跟踪以 `SESSION_QUERY_PERSISTENCE_FAILED` 失败；已经成功读取、但无法通过 Session 校验的持久化记录则以 `SESSION_QUERY_CORRUPT_SESSION` 失败。针对已知实时会话的标题读取、事件跟踪或事件读取不会查询持久化，因此持久化后端的健康状态无法使当前内存状态变得不可读。持久化标题和事件操作在加载前先执行列表查询，并在元数据不匹配时拒绝，而不会组合不一致的观察。血缘跟踪的取消信号会传递给持久化列表查询；事件跟踪和事件读取的取消信号会传递给持久化列表查询和检查。每项操作都会等待已启动的后端调用结算，然后使用信号的精确原因拒绝，即使后端忽略了该信号。针对已知实时会话且预先中止的标题读取、事件跟踪或事件读取会在 fold 或快照之前拒绝，且不查询持久化。批量标题观察执行一次元数据列表查询，使用最多 `persistedInspectConcurrency` 个 worker 检查唯一持久化 id，并保留每个标题自己观察到的 header，供下游授权使用。取消不会启动已排队检查，且只在已启动 worker 结算后拒绝。`listSessions()` 仍保持轻量，不加载日志或索引标题。
 
+## Evidence inspection
+
+`@deepseek-ai/dsh-session-query/evidence-inspector` 导出 `readSessionEvidence(sessionId, events, options?)`，它只对调用方已经取得的有序 event log 做开发者侧纯 projection。同一个选定 prefix 同时交给现有 Code Mode execution accounting/diagnostics 与 replay capability inspector，因此返回的 `session`、`execution` 和 `replay` 描述的是同一边界。`execution` 保留现有 `maxRunPeakInFlight` 命名和字节聚合溢出时返回 `null` 的语义，不把它包装成 global concurrency，也不伪造可测量的 byte total。`replay.modes` 直接复用现有 request-reconstruction、simulated、live-fork 与 reproducible capability 记录；evidence 与 snapshot 字段只在 replay inspector 既有校验和 fail-closed 选择之后报告是否存在。该 projection 不追加 session event、不持久化派生记录，也不定义新的 diagnostics metric、replay blocker、replay mode 或 evidence format。
+
+`options.boundary` 是传给 replay inspection 的包含端点 event sequence。`options.sourceKind` 记录调用方取得日志的方式，可为 `live`、`persisted` 或 `supplied-log`；直接检查默认使用 `supplied-log`，因为仅凭 event stream 本身无法证明它来自实时还是持久化来源。
+
 ## 过滤与提取
 
 `SessionResultFilter` 覆盖 id、可空 cwd、创建时间范围、可空父级和来源可用性。`SessionEventResultFilter` 覆盖 seq/时间范围、事件类型、表层和语义文本。过滤器数组使用 AND；同一列表子句内的值使用 OR。空列表值不匹配任何内容，范围包含端点，而格式错误的范围或封闭联合值以 `SESSION_QUERY_INVALID_FILTER` 失败。
