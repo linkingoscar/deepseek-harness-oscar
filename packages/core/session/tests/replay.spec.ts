@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ReplayRequestSnapshot } from '../src/replay-request.ts'
+import * as replayFacade from '../src/replay.ts'
 import {
   inspectReplayCapabilities,
   ReplayInspectionError,
@@ -53,6 +54,15 @@ function evidenceEvent(
 }
 
 describe('inspectReplayCapabilities', () => {
+  it('keeps internal replay helpers off the public facade', () => {
+    expect(Object.keys(replayFacade).sort()).toEqual([
+      'ReplayInspectionError',
+      'ReplaySimulationError',
+      'inspectReplayCapabilities',
+      'simulateReplayRequest',
+    ])
+  })
+
   it('keeps an empty transcript inspectable without inventing request or reproducibility evidence', () => {
     const inspection = inspectReplayCapabilities([])
 
@@ -110,6 +120,17 @@ describe('inspectReplayCapabilities', () => {
     expect(inspection.modes['live-fork']).toEqual({
       mode: 'live-fork', availability: 'conditional', effects: 'live-if-executed', blockers: ['LIVE_SOURCE_REQUIRED'],
     })
+  })
+
+  it('freezes the capability table, capability records, and blocker lists', () => {
+    const inspection = inspectReplayCapabilities(completedRequest())
+
+    expect(Object.isFrozen(inspection)).toBe(true)
+    expect(Object.isFrozen(inspection.modes)).toBe(true)
+    for (const capability of Object.values(inspection.modes)) {
+      expect(Object.isFrozen(capability)).toBe(true)
+      expect(Object.isFrozen(capability.blockers)).toBe(true)
+    }
   })
 
   it('keeps identity fingerprints distinct from restorable snapshot evidence', () => {
@@ -191,6 +212,34 @@ describe('inspectReplayCapabilities', () => {
 
     const inspection = inspectReplayCapabilities([...completedRequest(), valid, malformed])
     expect(inspection).not.toHaveProperty('reproducibilityEvidence')
+    expect(inspection.modes.reproducible.blockers).toEqual([
+      'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED',
+      'EXTERNAL_STATE_NOT_SNAPSHOTTED',
+      'REPRODUCIBLE_EXECUTOR_NOT_IMPLEMENTED',
+    ])
+  })
+
+  it('does not fall back to older valid evidence when the latest replacement is ignorable', () => {
+    const valid = evidenceEvent(3, {
+      version: 1,
+      requestHeaderSeq: 1,
+      executionEnvironmentSnapshot: snapshot('environment', 'e'),
+      externalStateSnapshot: snapshot('external', 'f'),
+    })
+    const ignored = {
+      ...evidenceEvent(4, {
+        version: 1,
+        requestHeaderSeq: 1,
+        executionEnvironmentSnapshot: snapshot('environment-later', 'a'),
+        externalStateSnapshot: snapshot('external-later', 'b'),
+      }),
+      ignorable: true,
+    } as SessionEvent
+
+    const inspection = inspectReplayCapabilities([...completedRequest(), valid, ignored])
+
+    expect(inspection).not.toHaveProperty('reproducibilityEvidence')
+    expect(inspection).not.toHaveProperty('reproducibilityEvidenceSeq')
     expect(inspection.modes.reproducible.blockers).toEqual([
       'EXECUTION_ENVIRONMENT_NOT_SNAPSHOTTED',
       'EXTERNAL_STATE_NOT_SNAPSHOTTED',
@@ -287,9 +336,12 @@ describe('inspectReplayCapabilities', () => {
     expect(second.requestHeader).toEqual({ config: { provider: 'mock', model: 'later' }, system: 'second' })
   })
 
-  it('refuses nonexistent, unsafe, and non-contiguous boundaries instead of guessing', () => {
+  it('refuses nonexistent, unsafe, fractional, and non-contiguous boundaries instead of guessing', () => {
     const events = completedRequest()
     expect(() => inspectReplayCapabilities(events, -1)).toThrow(ReplayInspectionError)
+    expect(() => inspectReplayCapabilities(events, Number.NaN)).toThrow(ReplayInspectionError)
+    expect(() => inspectReplayCapabilities(events, 1.5)).toThrow(ReplayInspectionError)
+    expect(() => inspectReplayCapabilities(events, Number.MAX_SAFE_INTEGER + 1)).toThrow(ReplayInspectionError)
     expect(() => inspectReplayCapabilities(events, 3)).toThrow(/must be an existing non-negative event seq/)
     expect(() => inspectReplayCapabilities([], 0)).toThrow(/does not exist in an empty session log/)
 
@@ -362,5 +414,56 @@ describe('simulateReplayRequest', () => {
       execute: () => 'unsafe',
     } as unknown as ReplaySimulationExecutor<string>
     await expect(simulateReplayRequest(completedRequest(), unsafe)).rejects.toThrow(/effects: "none"/)
+  })
+
+  it('rejects a non-object or empty executor identity before entering the executor', async () => {
+    await expect(simulateReplayRequest(
+      completedRequest(),
+      null as unknown as ReplaySimulationExecutor<string>,
+    )).rejects.toThrow(/executor must be an object/)
+
+    const execute = vi.fn(() => 'unused')
+    const executor = {
+      id: '   ',
+      effects: 'none',
+      execute,
+    } as ReplaySimulationExecutor<string>
+
+    await expect(simulateReplayRequest(completedRequest(), executor)).rejects.toThrow(ReplaySimulationError)
+    await expect(simulateReplayRequest(completedRequest(), executor)).rejects.toThrow(/id must be a non-empty string/)
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('propagates an executor failure without translating it into a replay contract error', async () => {
+    const failure = new Error('fixture executor failed')
+    const executor: ReplaySimulationExecutor<never> = {
+      id: 'failing-fixture',
+      effects: 'none',
+      execute: async () => {
+        throw failure
+      },
+    }
+
+    await expect(simulateReplayRequest(completedRequest(), executor)).rejects.toBe(failure)
+  })
+
+  it('awaits asynchronous executor results while preserving the reconstructed historical request', async () => {
+    const executor: ReplaySimulationExecutor<{ system: string | undefined }> = {
+      id: 'async-fixture',
+      effects: 'none',
+      execute: async request => ({ system: request.header.system }),
+    }
+
+    const replay = await simulateReplayRequest(completedRequest('historical'), executor)
+
+    expect(replay.executorId).toBe('async-fixture')
+    expect(replay.request).toMatchObject({
+      requestHeaderSeq: 1,
+      header: { config: CONFIG, system: 'historical' },
+      messages: [],
+    })
+    expect(Object.isFrozen(replay.request)).toBe(true)
+    expect(Object.isFrozen(replay.request.messages)).toBe(true)
+    expect(replay.result).toEqual({ system: 'historical' })
   })
 })
