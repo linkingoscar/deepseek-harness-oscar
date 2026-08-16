@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-16-replay-internal-responsibility-split.md
+2026-08-16-replay-internal-responsibility-split.md: 5bd6ed41af41b8c9dc8224cf34a48e6446539980
+2026-08-16-replay-internal-responsibility-split.zh.md: 2faad8310753a6a0200b323fdbf72fa6d5346a95
