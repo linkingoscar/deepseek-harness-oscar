@@ -59,6 +59,7 @@ describe('inspectReplayCapabilities', () => {
       'ReplayInspectionError',
       'ReplaySimulationError',
       'inspectReplayCapabilities',
+      'resolveReplaySnapshots',
       'simulateReplayRequest',
     ])
   })
