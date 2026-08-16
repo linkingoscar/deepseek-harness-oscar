@@ -22,6 +22,10 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
+    "./replay": {
+      "types": "./lib/types/replay.d.ts",
+      "default": "./lib/types/replay.js"
+    },
     "./reproducibility-evidence": {
       "types": "./lib/types/reproducibility-evidence.d.ts",
       "default": "./lib/types/reproducibility-evidence.js"
